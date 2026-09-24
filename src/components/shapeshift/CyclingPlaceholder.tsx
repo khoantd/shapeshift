@@ -29,7 +29,7 @@ export function CyclingPlaceholder() {
     return () => clearInterval(id);
   }, [reduce]);
   return (
-    <span aria-hidden className="pointer-events-none absolute inset-y-0 start-5 end-5 flex items-center overflow-hidden">
+    <span aria-hidden className="pointer-events-none absolute inset-x-5 top-5 flex h-8 items-center overflow-hidden">
       <AnimatePresence initial={false}>
         <motion.span
           key={i}

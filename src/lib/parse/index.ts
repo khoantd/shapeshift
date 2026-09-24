@@ -11,6 +11,7 @@ import { completeNote, parseNote, type NoteData } from "./note";
 import { completePoll, parsePoll, type PollData } from "./poll";
 import { completeReminder, parseReminder, type ReminderData } from "./reminder";
 import { completeSplit, parseSplit, type SplitData } from "./split";
+import { completeTip, parseTip, type TipData } from "./tip";
 import { completeTimer, parseTimer, type TimerData } from "./timer";
 import { completeTodo, parseTodo, type TodoData } from "./todo";
 import { completeTravel, parseTravel, type TravelData } from "./travel";
@@ -18,6 +19,8 @@ import { completeCountdown, parseCountdown, type CountdownData } from "./countdo
 import { completeTimezone, parseTimezone, type TimezoneData } from "./timezone";
 import { completeRandom, parseRandom, type RandomData } from "./random";
 import { completeGoal, parseGoal, type GoalData } from "./goal";
+import { completeRtcfc, parseRtcfc, type RtcfcData } from "./rtcfc";
+import { completeBcmt, parseBcmt, type BcmtData } from "./bcmt";
 
 export type ParsedMap = {
   event: EventData;
@@ -27,6 +30,7 @@ export type ParsedMap = {
   habit: HabitData;
   color: ColorData;
   split: SplitData;
+  tip: TipData;
   expense: ExpenseData;
   convert: ConvertData;
   calc: CalcData;
@@ -38,6 +42,8 @@ export type ParsedMap = {
   timezone: TimezoneData;
   random: RandomData;
   goal: GoalData;
+  rtcfc: RtcfcData;
+  bcmt: BcmtData;
   note: NoteData;
 };
 
@@ -56,6 +62,7 @@ export const parsers: { [K in CardIntent]: Parser<K> } = {
   habit: { parse: (t) => parseHabit(t), complete: completeHabit },
   color: { parse: (t, c) => parseColor(t, c.colorMood), complete: completeColor },
   split: { parse: (t) => parseSplit(t), complete: completeSplit },
+  tip: { parse: (t) => parseTip(t), complete: completeTip },
   expense: { parse: (t) => parseExpense(t), complete: completeExpense },
   convert: { parse: (t) => parseConvert(t), complete: completeConvert },
   calc: { parse: (t) => parseCalc(t), complete: completeCalc },
@@ -67,6 +74,8 @@ export const parsers: { [K in CardIntent]: Parser<K> } = {
   timezone: { parse: (t, c) => parseTimezone(t, c.ref), complete: completeTimezone },
   random: { parse: (t) => parseRandom(t), complete: completeRandom },
   goal: { parse: (t) => parseGoal(t), complete: completeGoal },
+  rtcfc: { parse: (t) => parseRtcfc(t), complete: completeRtcfc },
+  bcmt: { parse: (t) => parseBcmt(t), complete: completeBcmt },
   note: { parse: (t) => parseNote(t), complete: completeNote },
 };
 

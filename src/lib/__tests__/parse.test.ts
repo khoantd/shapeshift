@@ -6,6 +6,7 @@ import { parseTimer, formatClock } from "@/lib/parse/timer";
 import { parseHabit } from "@/lib/parse/habit";
 import { parseColor } from "@/lib/parse/color";
 import { parseSplit } from "@/lib/parse/split";
+import { parseTip } from "@/lib/parse/tip";
 import { parseExpense } from "@/lib/parse/expense";
 import { parseConvert } from "@/lib/parse/convert";
 import { evaluate, parseCalc } from "@/lib/parse/calc";
@@ -150,6 +151,15 @@ describe("split", () => {
   test("names", () => expect(parseSplit("split 900 between me, rahul and priya").people).toBe(3));
   test("ways", () => expect(parseSplit("1,200 4 ways").total).toBe(1200));
   test("partial", () => expect(parseSplit("split 500")).toEqual({ total: 500, people: null, currency: "₹" }));
+});
+
+describe("tip", () => {
+  test("tip 18% on 2400 for 4", () =>
+    expect(parseTip("tip 18% on 2400 for 4")).toEqual({ total: 2400, tipPercent: 18, people: 4, currency: "₹" }));
+  test("18% tip on $90", () => expect(parseTip("18% tip on $90")).toEqual({ total: 90, tipPercent: 18, people: null, currency: "$" }));
+  test("gratuity phrasing", () => expect(parseTip("gratuity 20 percent on 1500").tipPercent).toBe(20));
+  test("partial: no percent", () => expect(parseTip("tip on 800")).toEqual({ total: 800, tipPercent: null, people: null, currency: "₹" }));
+  test("partial: no total", () => expect(parseTip("tip 15%").total).toBeNull());
 });
 
 describe("expense", () => {
@@ -318,4 +328,146 @@ describe("goal", () => {
   test("slash", () => expect(parseGoal("pages 120/300")).toMatchObject({ current: 120, target: 300 }));
   test("money with k", () => expect(parseGoal("save 50k for a trip, saved 12k")).toMatchObject({ current: 12000, target: 50000 }));
   test("no target", () => expect(parseGoal("learn piano").target).toBeNull());
+});
+
+import { composeRtcfc, parseRtcfc } from "@/lib/parse/rtcfc";
+
+describe("rtcfc", () => {
+  test("one-liner marketing", () => {
+    const d = parseRtcfc(
+      "Role: senior marketer. Task: write 3 Zalo messages. Context: SME HCMC. Format: ≤400 chars VN. Constraints: no emojis in first line",
+    );
+    expect(d).toEqual({
+      role: "senior marketer",
+      task: "write 3 Zalo messages",
+      context: "SME HCMC",
+      format: "≤400 chars VN",
+      constraints: "no emojis in first line",
+    });
+  });
+  test("multiline with markdown bold", () => {
+    const d = parseRtcfc(`**Role:** You are a staff engineer reviewing a NestJS pull request.
+**Task:** Identify correctness bugs and security risks.
+**Context:** Monorepo with apps/api and packages/shared.
+**Format:** Markdown table with Severity P0–P3.
+**Constraints:** Skip style nits. Max 15 findings.`);
+    expect(d.role).toContain("staff engineer");
+    expect(d.task).toContain("correctness bugs");
+    expect(d.context).toContain("Monorepo");
+    expect(d.format).toContain("Markdown table");
+    expect(d.constraints).toContain("Skip style nits");
+  });
+  test("bare rtcfc", () =>
+    expect(parseRtcfc("rtcfc")).toEqual({ role: "", task: "", context: "", format: "", constraints: "" }));
+  test("partial Role+Task", () => {
+    const d = parseRtcfc("Role: CEO brief. Task: enter mid-market?");
+    expect(d.role).toBe("CEO brief");
+    expect(d.task).toBe("enter mid-market?");
+    expect(d.context).toBe("");
+    expect(d.format).toBe("");
+    expect(d.constraints).toBe("");
+  });
+  test("compose", () => {
+    expect(
+      composeRtcfc({
+        role: "a",
+        task: "b",
+        context: "c",
+        format: "d",
+        constraints: "e",
+      }),
+    ).toBe("Role: a\nTask: b\nContext: c\nFormat: d\nConstraints: e");
+  });
+});
+
+import { composeBcmt, parseBcmt } from "@/lib/parse/bcmt";
+
+describe("bcmt", () => {
+  test("one-liner SME email sample", () => {
+    const d = parseBcmt(
+      "Bối cảnh: Royal Solution CRM SME. Con người: CSM 5 năm; chủ SME bận. Mục tiêu: email kích hoạt trial, đặt demo 15 phút. Tiêu chuẩn: ≤120 từ, tiếng Việt, không emoji",
+    );
+    expect(d.context).toContain("Royal Solution");
+    expect(d.people).toContain("CSM");
+    expect(d.goal).toContain("email kích hoạt");
+    expect(d.standards).toContain("≤120 từ");
+    expect(d.input).toBe("");
+  });
+  test("tagged skeleton with input", () => {
+    const d = parseBcmt(`<bối_cảnh>
+Monorepo NestJS + Next.js.
+</bối_cảnh>
+
+<con_người>
+Bạn là staff engineer 10 năm NestJS.
+Người đọc là dev tác giả PR.
+</con_người>
+
+<mục_tiêu>
+Chỉ ra lỗi correctness trong diff.
+</mục_tiêu>
+
+<tiêu_chuẩn>
+- Định dạng: bảng Markdown
+- Tối đa 15 finding
+</tiêu_chuẩn>
+
+<đầu_vào>
+{diff}
+</đầu_vào>`);
+    expect(d.context).toContain("Monorepo NestJS");
+    expect(d.people).toContain("staff engineer");
+    expect(d.goal).toContain("correctness");
+    expect(d.standards).toContain("bảng Markdown");
+    expect(d.standards).toContain("15 finding");
+    expect(d.input).toBe("{diff}");
+  });
+  test("bare bcmt", () =>
+    expect(parseBcmt("bcmt")).toEqual({ context: "", people: "", goal: "", standards: "", input: "" }));
+  test("english aliases", () => {
+    const d = parseBcmt("Context: SaaS ERP. People: QA engineer. Goal: generate test cases. Standards: JSON only");
+    expect(d).toEqual({
+      context: "SaaS ERP",
+      people: "QA engineer",
+      goal: "generate test cases",
+      standards: "JSON only",
+      input: "",
+    });
+  });
+  test("compose omits empty input", () => {
+    expect(
+      composeBcmt({
+        context: "a",
+        people: "b",
+        goal: "c",
+        standards: "d",
+        input: "",
+      }),
+    ).toBe(`<bối_cảnh>
+a
+</bối_cảnh>
+
+<con_người>
+b
+</con_người>
+
+<mục_tiêu>
+c
+</mục_tiêu>
+
+<tiêu_chuẩn>
+d
+</tiêu_chuẩn>`);
+  });
+  test("compose includes input when set", () => {
+    expect(
+      composeBcmt({
+        context: "a",
+        people: "b",
+        goal: "c",
+        standards: "d",
+        input: "{ticket}",
+      }),
+    ).toContain("<đầu_vào>\n{ticket}\n</đầu_vào>");
+  });
 });

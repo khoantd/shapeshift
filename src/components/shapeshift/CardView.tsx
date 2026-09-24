@@ -91,7 +91,14 @@ export function CardView<K extends CardIntent>({ intent, data, signals, readines
             <motion.div style={{ opacity: btnOpacity, y: btnY }}>
               <Button size="sm" onClick={onConfirm} className="gap-1.5 rounded-full pr-2 pl-3">
                 {editing ? "Save" : "Add"} {def.label.toLowerCase()}
-                <CornerDownLeft className="size-3.5 opacity-60" aria-hidden />
+                {intent === "rtcfc" || intent === "bcmt" ? (
+                  <span className="flex items-center gap-0.5 opacity-60" aria-hidden>
+                    <Kbd className="h-4 min-w-4 px-1 text-[10px]">⌘</Kbd>
+                    <Kbd className="h-4 min-w-4 px-1 text-[10px]">↵</Kbd>
+                  </span>
+                ) : (
+                  <CornerDownLeft className="size-3.5 opacity-60" aria-hidden />
+                )}
               </Button>
             </motion.div>
           </>

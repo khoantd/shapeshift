@@ -59,6 +59,8 @@ function intentScores(raw: string): Scores {
   if (has(/\b(remind|reminder|don'?t forget|remember to)\b/, t)) add("reminder", 6);
   if (has(/\b(split|divide|share)\b/, t)) add("split", num ? 5 : 3);
   if (has(/\b(between|among)\s+(\d+|two|three|four|five|six)\b/, t) && num) add("split", 2);
+  if (has(/\b(tip|gratuity|service\s*charge)\b/, t)) add("tip", num ? 6 : 3);
+  if (has(/\d+\s*%\s*(tip|gratuity)\b|\b(tip|gratuity)\s+\d+\s*(%|percent|pct)\b/, t)) add("tip", 2);
   if (has(/\b(spent|paid|bought|cost|expense)\b/, t)) add("expense", num ? 5 : 3);
   if (has(/^(₹|rs\.?|\$)\s?\d/, t)) add("expense", 2);
   if (has(CONVERT_FULL, t)) add("convert", 7);
@@ -88,6 +90,26 @@ function intentScores(raw: string): Scores {
   if (has(/\b\d[\d,]*\s*(of|\/|out of)\s*\d[\d,]*\b/, t) && has(/[a-z]{3,}/, t)) add("goal", 4.5);
   if (has(/\b(goal|target)\b/, t)) add("goal", 3);
   if (has(/\b(done|so far|saved|completed|finished)\b/, t) && has(/\d/, t)) add("goal", (t.match(/\d+/g)?.length ?? 0) >= 2 ? 5 : 2.5);
+  // RTCFC: keyword or labeled Role/Task/Context/Format/Constraints sections
+  if (has(/\brtcfc\b/, t)) add("rtcfc", 7);
+  const rtcfcLabels = (t.match(/\b(role|task|context|format|constraints)\s*:/g) ?? []).length;
+  if (rtcfcLabels >= 4) add("rtcfc", 7);
+  else if (rtcfcLabels >= 2) add("rtcfc", 5.5);
+  else if (rtcfcLabels === 1) add("rtcfc", 2.5);
+  if (has(/\b(prompt framework|rtf[- ]?style|rtf prompt)\b/, t)) add("rtcfc", 4);
+  // BCMT: keyword, VN tags, or Bối cảnh / Con người / Mục tiêu / Tiêu chuẩn labels
+  if (has(/\bbcmt\b/, t)) add("bcmt", 7);
+  if (has(/<(bối_cảnh|boi_canh|con_người|con_nguoi|mục_tiêu|muc_tieu|tiêu_chuẩn|tieu_chuan)/, t)) add("bcmt", 7);
+  const bcmtLabels =
+    (
+      t.match(
+        /\b(bối\s*cảnh|boi\s*canh|con\s*người|con\s*nguoi|mục\s*tiêu|muc\s*tieu|tiêu\s*chuẩn|tieu\s*chuan|đầu\s*vào|dau\s*vao|people|audience|standards|criteria)\s*:/g,
+      ) ?? []
+    ).length + (has(/\b(context|goal|objective|input)\s*:/, t) && has(/\b(people|standards|bối|boi|con\s*ng|mục|muc|tiêu|tieu)\b/, t) ? 1 : 0);
+  if (bcmtLabels >= 3) add("bcmt", 7);
+  else if (bcmtLabels >= 2) add("bcmt", 5.5);
+  else if (bcmtLabels === 1) add("bcmt", 2.5);
+  if (has(/\bkhung\s+bcm[t]\b/, t)) add("bcmt", 4);
   const listSeps = (t.match(/,|\band\b|&|\n/g) ?? []).length;
   if (listSeps >= 2) add("todo", 4);
   else if (listSeps === 1 && has(/^(buy|get|todo|to do|groceries)\b/, t)) add("todo", 3);
@@ -106,6 +128,10 @@ function intentScores(raw: string): Scores {
 
   // Mutual exclusions mirror the criteria wording.
   if ((s.split ?? 0) >= 5) s.calc = Math.min(s.calc ?? 0, 1);
+  if ((s.tip ?? 0) >= 5) {
+    s.calc = Math.min(s.calc ?? 0, 1);
+    s.split = Math.min(s.split ?? 0, 2);
+  }
   if ((s.convert ?? 0) >= 7) s.calc = Math.min(s.calc ?? 0, 1);
   if ((s.reminder ?? 0) >= 6) {
     s.event = Math.min(s.event ?? 0, 2.5);
@@ -129,6 +155,17 @@ function intentScores(raw: string): Scores {
     s.convert = Math.min(s.convert ?? 0, 1);
   }
   if ((s.goal ?? 0) >= 4.5) s.calc = Math.min(s.calc ?? 0, 1);
+  if ((s.rtcfc ?? 0) >= 5) {
+    s.note = 0;
+    s.todo = Math.min(s.todo ?? 0, 1);
+    s.bcmt = Math.min(s.bcmt ?? 0, 2);
+  }
+  if ((s.bcmt ?? 0) >= 5) {
+    s.note = 0;
+    s.todo = Math.min(s.todo ?? 0, 1);
+    s.rtcfc = Math.min(s.rtcfc ?? 0, 2);
+    s.goal = Math.min(s.goal ?? 0, 2);
+  }
   return s;
 }
 

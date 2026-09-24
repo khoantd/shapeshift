@@ -19,6 +19,8 @@ const EXAMPLES: [string, string][] = [
   ["discord blurple", "color"],
   ["the color of the ocean", "color"],
   ["split 2400 between 3", "split"],
+  ["tip 18% on 2400 for 4", "tip"],
+  ["18% tip on $90", "tip"],
   ["spent 450 on uber", "expense"],
   ["5 miles in km", "convert"],
   ["72f to c", "convert"],
@@ -38,6 +40,13 @@ const EXAMPLES: [string, string][] = [
   ["random number 1-100", "random"],
   ["read 12 books this year, 4 done", "goal"],
   ["4 of 10 workouts", "goal"],
+  ["rtcfc", "rtcfc"],
+  ["Role: staff engineer. Task: review this PR. Context: NestJS. Format: severity table. Constraints: skip style nits", "rtcfc"],
+  ["bcmt", "bcmt"],
+  [
+    "Bối cảnh: CRM SME Việt. Con người: CSM 5 năm; chủ SME bận. Mục tiêu: email kích hoạt trial. Tiêu chuẩn: ≤120 từ, tiếng Việt",
+    "bcmt",
+  ],
 ];
 
 describe("mock classifier", () => {

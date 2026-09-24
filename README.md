@@ -59,6 +59,7 @@ Restart `bun dev`. The latency readout in the bottom-right corner switches from 
 | Habit | `gym 3x a week` |
 | Color | `#ff6b35`, `tiffany blue`, `minecraft diamond` |
 | Split | `split 2400 between 3` |
+| Tip | `tip 18% on 2400 for 4` |
 | Expense | `spent 450 on uber` |
 | Convert | `5 miles in km`, `72f to c` |
 | Calculate | `18% of 3450` |
@@ -70,6 +71,7 @@ Restart `bun dev`. The latency readout in the bottom-right corner switches from 
 | Time zone | `3pm pst in ist`, `what time is it in tokyo` |
 | Random | `roll 2d6`, `flip a coin`, `pick one: tacos, sushi or pizza` |
 | Goal | `read 12 books this year, 4 done` |
+| RTCFC | `Role: staff engineer. Task: review this PR. Context: NestJS. Format: severity table. Constraints: skip style nits` |
 | Note | anything else |
 
 Saved cards live in your browser (`localStorage`) until you delete them. Click one to edit it.
@@ -78,7 +80,7 @@ Saved cards live in your browser (`localStorage`) until you delete them. Click o
 
 | Key | Action |
 | --- | --- |
-| <kbd>Enter</kbd> | Save the card |
+| <kbd>Enter</kbd> | Save the card (RTCFC: new line; <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> saves) |
 | <kbd>Esc</kbd> | Clear (or cancel an edit) |
 | <kbd>Tab</kbd> | Keep a faint preview |
 | <kbd>←</kbd> <kbd>→</kbd> | Choose between "Did you mean" chips |

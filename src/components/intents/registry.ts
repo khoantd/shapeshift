@@ -14,9 +14,12 @@ import {
   Focus,
   Link2,
   ListChecks,
+  MessageSquareQuote,
+  Layers,
   Palette,
   Repeat,
   Ruler,
+  Receipt,
   ShoppingCart,
   StickyNote,
   Sun,
@@ -28,6 +31,7 @@ import {
 import type { CardIntent } from "@/lib/jev/types";
 import { formatAmount } from "@/lib/parse/common";
 import { UNIT_LABELS } from "@/lib/parse/convert";
+import { tipAmounts } from "@/lib/parse/tip";
 import { formatClock } from "@/lib/parse/timer";
 import { describeRandom } from "@/lib/parse/random";
 import { formatIn } from "@/lib/parse/timezone";
@@ -48,8 +52,11 @@ import { LinkCard } from "./LinkCard";
 import { NoteCard } from "./NoteCard";
 import { PollCard } from "./PollCard";
 import { ReminderPill } from "./ReminderPill";
+import { RtcfcCard } from "./RtcfcCard";
+import { BcmtCard } from "./BcmtCard";
 import { formatWhen } from "./shared";
 import { SplitCard } from "./SplitCard";
+import { TipCard } from "./TipCard";
 import { TimerRing } from "./TimerRing";
 import { TodoList } from "./TodoList";
 import { TravelCard } from "./TravelCard";
@@ -143,6 +150,19 @@ export const registry: Registry = {
     summary: (d) =>
       d.total && d.people ? `${formatAmount(d.total, d.currency)} ÷ ${d.people} = ${formatAmount(d.total / d.people, d.currency)} each` : "Split",
     Component: SplitCard,
+  },
+  tip: {
+    label: "Tip",
+    example: "tip 18% on 2400 for 4",
+    icon: Receipt,
+    signals: [],
+    summary: (d) => {
+      if (d.total === null || d.tipPercent === null) return "Tip";
+      const { tip, grand, each } = tipAmounts(d);
+      if (each !== null) return `${d.tipPercent}% → ${formatAmount(each, d.currency)} each`;
+      return `${d.tipPercent}% of ${formatAmount(d.total, d.currency)} = ${formatAmount(tip, d.currency)} · ${formatAmount(grand, d.currency)} total`;
+    },
+    Component: TipCard,
   },
   expense: {
     label: "Expense",
@@ -244,6 +264,23 @@ export const registry: Registry = {
     signals: [],
     summary: (d) => (d.target ? `${d.title || "Goal"} · ${d.current}/${d.target}${d.unit ? ` ${d.unit}` : ""}` : d.title || "Goal"),
     Component: GoalCard,
+  },
+  rtcfc: {
+    label: "RTCFC",
+    example: "Role: staff engineer. Task: review this PR. Context: NestJS. Format: severity table. Constraints: skip style nits",
+    icon: MessageSquareQuote,
+    signals: [],
+    summary: (d) => d.task || d.role || "RTCFC",
+    Component: RtcfcCard,
+  },
+  bcmt: {
+    label: "BCMT",
+    example:
+      "Bối cảnh: CRM SME Việt. Con người: CSM 5 năm; chủ SME bận. Mục tiêu: email kích hoạt trial, đặt demo 15 phút. Tiêu chuẩn: ≤120 từ, tiếng Việt, không emoji",
+    icon: Layers,
+    signals: [],
+    summary: (d) => d.goal || d.context || "BCMT",
+    Component: BcmtCard,
   },
   note: {
     label: "Note",

@@ -8,6 +8,7 @@ export const INTENT_KEYS = [
   "habit",
   "color",
   "split",
+  "tip",
   "expense",
   "convert",
   "calc",
@@ -19,6 +20,8 @@ export const INTENT_KEYS = [
   "timezone",
   "random",
   "goal",
+  "rtcfc",
+  "bcmt",
   "note",
   "none",
 ] as const;

@@ -27,6 +27,10 @@ import { notify } from "@/lib/notify";
 
 const subscribeNoop = () => () => {};
 
+/** One line of shell text (text-[22px] leading-8). */
+const LINE = 32;
+const MAX_LINES = 5;
+
 function useSearchFlags() {
   const search = useSyncExternalStore(
     subscribeNoop,
@@ -67,7 +71,7 @@ function IntentCard<K extends CardIntent>(props: {
 export function Shapeshift() {
   const flags = useSearchFlags();
   const reduce = useReducedMotion();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [text, setText] = useState("");
   const { result, resultText, status, hud } = useIntent(text);
@@ -101,6 +105,14 @@ export function Shapeshift() {
   const intent = activeIntent(ui);
   const ghost = ui.kind === "ghost";
   const meta = useMemo(() => (intent ? derive(intent, text, gated) : null), [intent, text, gated]);
+
+  // Keep the shell textarea one line tall for short text; grow up to ~5 lines, then scroll.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.min(el.scrollHeight, LINE * MAX_LINES)}px`;
+  }, [text]);
 
   // Readiness: Jev's continuous score when it agrees with the card, otherwise how filled-in the card is.
   const target = !intent
@@ -223,15 +235,22 @@ export function Shapeshift() {
     [],
   );
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const atEnd = e.currentTarget.selectionStart === text.length;
+    const multilinePrompt = intent === "rtcfc" || intent === "bcmt";
     if (e.key === "/" && text === "") {
       e.preventDefault();
       setPaletteOpen(true);
     } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (ui.kind === "choose") pick(ui.options[chip]);
-      else complete();
+      if (ui.kind === "choose") {
+        e.preventDefault();
+        pick(ui.options[chip]);
+      } else if (multilinePrompt && !e.metaKey && !e.ctrlKey) {
+        // Plain Enter inserts a newline while drafting RTCFC / BCMT prompts.
+      } else {
+        e.preventDefault();
+        complete();
+      }
     } else if (e.key === "Escape") {
       e.preventDefault();
       reset();
@@ -275,10 +294,11 @@ export function Shapeshift() {
       <main id="main" className="mx-auto w-full max-w-[560px] px-4 pt-[14vh] pb-24 sm:px-0 sm:pt-[22vh]">
         <h1 className="sr-only">Shapeshift</h1>
         <MorphContainer readiness={readiness} edge={ghost ? null : (meta?.edge ?? null)}>
-          <motion.div layout="position" className="relative flex h-[72px] items-center px-5">
-            <input
+          <motion.div layout="position" className="relative min-h-[72px] px-5 py-5">
+            <textarea
               ref={inputRef}
               value={text}
+              rows={1}
               onChange={(e) => {
                 const v = e.target.value;
                 setText(v);
@@ -293,14 +313,15 @@ export function Shapeshift() {
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
-              enterKeyHint="done"
-              className="relative z-[1] h-8 w-full bg-transparent pe-6 text-[22px] leading-8 font-[450] tracking-[-0.01em] text-foreground caret-brand outline-none"
+              enterKeyHint={intent === "rtcfc" || intent === "bcmt" ? "enter" : "done"}
+              className="relative z-[1] block w-full resize-none overflow-y-auto bg-transparent pe-6 text-[22px] leading-8 font-[450] tracking-[-0.01em] text-foreground caret-brand outline-none"
+              style={{ minHeight: LINE, maxHeight: LINE * MAX_LINES }}
             />
             {text === "" && <CyclingPlaceholder />}
             <span
               aria-hidden
               className={cn(
-                "absolute end-5 size-1.5 rounded-full bg-brand transition-opacity duration-300 ease-out",
+                "absolute end-5 top-[1.875rem] size-1.5 rounded-full bg-brand transition-opacity duration-300 ease-out",
                 status === "thinking" ? "opacity-60" : "opacity-0",
               )}
             />
@@ -338,7 +359,8 @@ export function Shapeshift() {
         <RecentStack items={saved.filter((x) => x.id !== editingId)} flyingId={flyingId} onOpen={reopen} onDelete={remove} />
 
         <p id="shapeshift-hint" className="sr-only">
-          Type anything. Enter adds the card, Escape clears, Tab keeps a preview, slash opens every card type.
+          Type anything. Enter adds the card, except for RTCFC and BCMT prompts where Enter inserts a new line and Command or Control Enter adds the card. Escape
+          clears, Tab keeps a preview, slash opens every card type.
         </p>
         <div role="status" aria-live="polite" className="sr-only">
           {liveMessage}
