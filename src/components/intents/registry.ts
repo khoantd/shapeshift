@@ -2,6 +2,10 @@ import {
   AlarmClock,
   CalendarClock,
   Dices,
+  Flag,
+  FolderOpen,
+  Gauge,
+  GitBranch,
   Globe,
   Target,
   Bell,
@@ -20,13 +24,18 @@ import {
   Repeat,
   Ruler,
   Receipt,
+  Scale,
+  ShieldCheck,
   ShoppingCart,
   StickyNote,
   Sun,
   Timer,
   Users,
+  UtensilsCrossed,
   Vote,
   Wallet,
+  Dumbbell,
+  Landmark,
 } from "lucide-react";
 import type { CardIntent } from "@/lib/jev/types";
 import { formatAmount } from "@/lib/parse/common";
@@ -35,12 +44,22 @@ import { tipAmounts } from "@/lib/parse/tip";
 import { formatClock } from "@/lib/parse/timer";
 import { describeRandom } from "@/lib/parse/random";
 import { formatIn } from "@/lib/parse/timezone";
+import { PRIORITY_LABEL } from "@/lib/parse/priority";
 import type { GatedSignals } from "@/lib/signals";
+import { ApproveCard } from "./ApproveCard";
 import { CalcCard } from "./CalcCard";
+import { ClassifyCard } from "./ClassifyCard";
 import { CountdownCard } from "./CountdownCard";
+import { EmiCard } from "./EmiCard";
+import { EvalCard } from "./EvalCard";
 import { GoalCard } from "./GoalCard";
+import { ModerateCard } from "./ModerateCard";
 import { RandomCard } from "./RandomCard";
+import { RecipeCard } from "./RecipeCard";
+import { RouteCard } from "./RouteCard";
 import { TimezoneCard } from "./TimezoneCard";
+import { TriageCard } from "./TriageCard";
+import { WorkoutCard } from "./WorkoutCard";
 import { ColorPicker } from "./ColorPicker";
 import { ContactCard } from "./ContactCard";
 import { ConvertCard } from "./ConvertCard";
@@ -281,6 +300,106 @@ export const registry: Registry = {
     signals: [],
     summary: (d) => d.goal || d.context || "BCMT",
     Component: BcmtCard,
+  },
+  triage: {
+    label: "Triage",
+    example: "Title: Payment failed. Report: Customer charged twice for March. Service: Billing API. Triage this ticket",
+    icon: Gauge,
+    signals: ["ticketPriority", "urgency"],
+    badges: (s) => [...urgent(s), ...(s.priorityLevel === "p0" || s.priorityLevel === "p1" ? [{ id: "pri", label: PRIORITY_LABEL[s.priorityLevel], icon: CircleAlert, tone: "caution" as const }] : [])],
+    edge: (s) => (s.priorityLevel === "p0" || s.urgent ? "var(--caution)" : null),
+    summary: (d) => d.title || d.report.slice(0, 40) || "Triage",
+    Component: TriageCard,
+  },
+  classify: {
+    label: "Classify",
+    example: "Classify this document. Q3 invoice for Acme Corp totaling $12,400. Categories: finance, legal, hr, product",
+    icon: FolderOpen,
+    signals: ["docCategory"],
+    summary: (d) => d.body.slice(0, 48) || "Classify",
+    Component: ClassifyCard,
+  },
+  moderate: {
+    label: "Moderate",
+    example: "Content: You should be fired idiot. Policy: No personal attacks. Flag for moderator if needed",
+    icon: Flag,
+    signals: ["needsModeration"],
+    badges: (s) => (s.needsModeration ? [{ id: "flag", label: "Flag", icon: Flag, tone: "caution" }] : []),
+    edge: (s) => (s.needsModeration ? "var(--caution)" : null),
+    summary: (d) => d.content.slice(0, 48) || "Moderate",
+    Component: ModerateCard,
+  },
+  eval: {
+    label: "Eval",
+    example: "Request: What is our refund window? Answer: 14 days from purchase. Reference: Help center §3. Evaluate this answer",
+    icon: Scale,
+    signals: ["answerQuality", "needsRevision"],
+    badges: (s) => (s.needsRevision || s.answerQuality < 0.75 ? [{ id: "rev", label: "Revise", icon: CircleAlert, tone: "caution" }] : []),
+    edge: (s) => (s.needsRevision || s.answerQuality < 0.75 ? "var(--caution)" : "var(--positive)"),
+    summary: (d) => d.request.slice(0, 40) || d.answer.slice(0, 40) || "Eval",
+    Component: EvalCard,
+  },
+  route: {
+    label: "Route",
+    example: "Subject: New vendor signup. Fields: company, tax id. Owners: Maya, Billing queue. Route this form",
+    icon: GitBranch,
+    signals: ["routeDecision"],
+    badges: (s) =>
+      s.routeDecision === "another_review"
+        ? [{ id: "review", label: "Another review", icon: Users }]
+        : s.routeDecision === "assign"
+          ? [{ id: "assign", label: "Assign", icon: Users }]
+          : [],
+    summary: (d) => d.subject || (d.owners[0] ? `Route → ${d.owners[0]}` : "Route"),
+    Component: RouteCard,
+  },
+  approve: {
+    label: "Approve",
+    example: 'Tool: send_email. Args: {"to":"user@acme.com","subject":"Welcome"}. Pause for approval',
+    icon: ShieldCheck,
+    signals: ["toolApproval"],
+    badges: (s) =>
+      s.toolApproval === "pause"
+        ? [{ id: "pause", label: "Paused", icon: CircleAlert, tone: "caution" }]
+        : s.toolApproval === "allow"
+          ? [{ id: "allow", label: "Allow", icon: ShieldCheck }]
+          : [],
+    edge: (s) => (s.toolApproval === "pause" ? "var(--caution)" : s.toolApproval === "allow" ? "var(--positive)" : null),
+    summary: (d) => d.tool || "Approve",
+    Component: ApproveCard,
+  },
+  workout: {
+    label: "Workout",
+    example: "3x10 bench press 60kg",
+    icon: Dumbbell,
+    signals: [],
+    summary: (d) =>
+      [d.exercise || "Workout", d.sets && d.reps ? `${d.sets}×${d.reps}` : null, d.weight != null ? `${d.weight}${d.unit ?? ""}` : null]
+        .filter(Boolean)
+        .join(" · "),
+    Component: WorkoutCard,
+  },
+  emi: {
+    label: "EMI",
+    example: "emi on 5 lakh at 9% for 5 years",
+    icon: Landmark,
+    signals: [],
+    summary: (d) =>
+      [d.principal != null ? formatAmount(d.principal, d.currency) : "EMI", d.annualRate != null ? `${d.annualRate}%` : null, d.tenureMonths ? `${d.tenureMonths} mo` : null]
+        .filter(Boolean)
+        .join(" · "),
+    Component: EmiCard,
+  },
+  recipe: {
+    label: "Recipe",
+    example: "pasta with garlic, tomato and olive oil for 2",
+    icon: UtensilsCrossed,
+    signals: [],
+    summary: (d) =>
+      [d.title || "Recipe", d.ingredients.length ? `${d.ingredients.length} ingredients` : null, d.servings ? `serves ${d.servings}` : null]
+        .filter(Boolean)
+        .join(" · "),
+    Component: RecipeCard,
   },
   note: {
     label: "Note",

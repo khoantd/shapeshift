@@ -1,16 +1,20 @@
 import type {
   Answer,
   ColorMood,
+  DocCategory,
   EventMode,
   ExpenseCategory,
   IntentResult,
+  RouteDecision,
   SignalKey,
   Signals,
   TimerKind,
   Tone,
+  ToolApproval,
   Transport,
   TripType,
 } from "@/lib/jev/types";
+import { priorityFromScore, type PriorityLevel } from "@/lib/parse/priority";
 
 export const SIGNAL_THRESHOLDS = {
   choiceMin: 0.6,
@@ -30,14 +34,25 @@ export type GatedSignals = {
   colorMood: ColorMood | null;
   timerKind: TimerKind | null;
   tone: Tone | null;
+  docCategory: DocCategory | null;
+  routeDecision: RouteDecision | null;
+  toolApproval: ToolApproval | null;
   recurring: boolean;
   isQuestion: boolean;
   hasExplicitOptions: boolean;
   isShoppingList: boolean;
+  needsModeration: boolean;
+  needsRevision: boolean;
   /** Continuous 0..2, used for smooth mappings. */
   urgency: number;
   /** Past the caution threshold (with hysteresis). */
   urgent: boolean;
+  /** Continuous 0..3 ticket priority ladder. */
+  ticketPriority: number;
+  /** Discrete P3–P0 from ticketPriority. */
+  priorityLevel: PriorityLevel | null;
+  /** Continuous 0..2 answer quality ladder. */
+  answerQuality: number;
 };
 
 export const neutralGated: GatedSignals = {
@@ -48,12 +63,20 @@ export const neutralGated: GatedSignals = {
   colorMood: null,
   timerKind: null,
   tone: null,
+  docCategory: null,
+  routeDecision: null,
+  toolApproval: null,
   recurring: false,
   isQuestion: false,
   hasExplicitOptions: false,
   isShoppingList: false,
+  needsModeration: false,
+  needsRevision: false,
   urgency: 0,
   urgent: false,
+  ticketPriority: 0,
+  priorityLevel: null,
+  answerQuality: 1,
 };
 
 const ESCAPES = new Set(["unspecified", "other"]);
@@ -71,10 +94,31 @@ function gateNoul(p: number, prev: boolean): boolean {
   return prev;
 }
 
-type ChoiceKey = "eventMode" | "transport" | "tripType" | "expenseCategory" | "colorMood" | "timerKind" | "tone";
-type NoulKey = "recurring" | "isQuestion" | "hasExplicitOptions" | "isShoppingList";
-const CHOICE_KEYS: ChoiceKey[] = ["eventMode", "transport", "tripType", "expenseCategory", "colorMood", "timerKind", "tone"];
-const NOUL_KEYS: NoulKey[] = ["recurring", "isQuestion", "hasExplicitOptions", "isShoppingList"];
+type ChoiceKey =
+  | "eventMode"
+  | "transport"
+  | "tripType"
+  | "expenseCategory"
+  | "colorMood"
+  | "timerKind"
+  | "tone"
+  | "docCategory"
+  | "routeDecision"
+  | "toolApproval";
+type NoulKey = "recurring" | "isQuestion" | "hasExplicitOptions" | "isShoppingList" | "needsModeration" | "needsRevision";
+const CHOICE_KEYS: ChoiceKey[] = [
+  "eventMode",
+  "transport",
+  "tripType",
+  "expenseCategory",
+  "colorMood",
+  "timerKind",
+  "tone",
+  "docCategory",
+  "routeDecision",
+  "toolApproval",
+];
+const NOUL_KEYS: NoulKey[] = ["recurring", "isQuestion", "hasExplicitOptions", "isShoppingList", "needsModeration", "needsRevision"];
 
 /**
  * Read only the signals the committed intent uses, applying thresholds and
@@ -97,6 +141,13 @@ export function gateSignals(prev: GatedSignals, result: IntentResult, used: read
   if (uses.has("urgency")) {
     next.urgency = s.urgency.score;
     next.urgent = prev.urgent ? s.urgency.score > SIGNAL_THRESHOLDS.urgentOff : s.urgency.score > SIGNAL_THRESHOLDS.urgentOn;
+  }
+  if (uses.has("ticketPriority")) {
+    next.ticketPriority = s.ticketPriority.score;
+    next.priorityLevel = priorityFromScore(s.ticketPriority.score);
+  }
+  if (uses.has("answerQuality")) {
+    next.answerQuality = s.answerQuality.score;
   }
   return next;
 }

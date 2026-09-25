@@ -6,20 +6,26 @@ import {
   type CardIntent,
   COLOR_MOODS,
   type ColorMood,
+  DOC_CATEGORIES,
+  type DocCategory,
   EVENT_MODES,
   EXPENSE_CATEGORIES,
   INTENT_KEYS,
   type IntentKey,
   type IntentResult,
   noneResult,
+  ROUTE_DECISIONS,
+  type RouteDecision,
   TIMER_KINDS,
   TONES,
+  TOOL_APPROVALS,
+  type ToolApproval,
   TRANSPORTS,
   TRIP_TYPES,
 } from "./types";
 
 /** Keep in sync with questions.ts (asserted in tests). */
-export const MOCK_QUESTION_COUNT = 14;
+export const MOCK_QUESTION_COUNT = 21;
 export const MOCK_MODEL = "jev-offline";
 
 const has = (re: RegExp, t: string) => re.test(t);
@@ -166,6 +172,94 @@ function intentScores(raw: string): Scores {
     s.rtcfc = Math.min(s.rtcfc ?? 0, 2);
     s.goal = Math.min(s.goal ?? 0, 2);
   }
+  // Triage: ticket / priority / outage / customer report
+  if (has(/\b(triage|priorit[iy]ze|escalat)\b/, t)) add("triage", 6);
+  if (has(/\b(ticket|incident|outage|customer report|support request)\b|\bp[0-3]\b/, t)) add("triage", 5);
+  if (has(/\b(Title|Report|Ticket|Service)\s*:/i, raw)) add("triage", 4);
+  // Classify: categorize / Categories:
+  if (has(/\b(classify|categorize|categorise)\b/, t)) add("classify", 6.5);
+  if (has(/\bcategor(?:y|ies)\s*:/i, raw)) add("classify", 6);
+  if (has(/\b(document|this (text|doc|email|file))\b/, t) && has(/\b(category|classify|label)\b/, t)) add("classify", 4);
+  // Moderate: policy / flag / harassment
+  if (has(/\b(moderate|moderation|flag for (a )?moderator)\b/, t)) add("moderate", 6.5);
+  if (has(/\b(Content|Policy|Criteria)\s*:/i, raw) && has(/\b(policy|moderate|flag|toxic|harass|nsfw|abuse)\b/, t)) add("moderate", 6);
+  if (has(/\b(toxic|harass|hate speech|nsfw|abuse|violat)\b/, t)) add("moderate", 4);
+  // Eval: Request/Answer/Reference or evaluate answer
+  if (has(/\b(eval(?:uate)?|grade|score)\b.*\b(answer|response)\b|\b(answer|response)\b.*\b(eval(?:uate)?|grade|score)\b/, t)) add("eval", 6);
+  const evalLabels = (raw.match(/\b(Request|Question|Answer|Response|Reference|Sources?)\s*:/gi) ?? []).length;
+  if (evalLabels >= 2) add("eval", 7);
+  else if (evalLabels === 1) add("eval", 3);
+  if (has(/\bneeds?\s+revision\b|\brevise (this|the) answer\b/, t)) add("eval", 4);
+
+  if ((s.triage ?? 0) >= 5) {
+    s.note = 0;
+    s.reminder = Math.min(s.reminder ?? 0, 2);
+    s.todo = Math.min(s.todo ?? 0, 1);
+  }
+  if ((s.classify ?? 0) >= 5) {
+    s.note = 0;
+    s.expense = Math.min(s.expense ?? 0, 1);
+  }
+  if ((s.moderate ?? 0) >= 5) {
+    s.note = 0;
+    s.eval = Math.min(s.eval ?? 0, 2);
+  }
+  if ((s.eval ?? 0) >= 5) {
+    s.note = 0;
+    s.rtcfc = Math.min(s.rtcfc ?? 0, 2);
+    s.bcmt = Math.min(s.bcmt ?? 0, 2);
+    s.moderate = Math.min(s.moderate ?? 0, 2);
+  }
+  // Route: assign owner / another review / form routing
+  if (has(/\b(route|routing|assign (an )?owner|another review)\b/, t)) add("route", 6.5);
+  if (has(/\b(Subject|Owners?|Assignees?|Queue|Fields?)\s*:/i, raw) && has(/\b(route|assign|owner|queue|review)\b/, t)) add("route", 6);
+  if (has(/\b(Owners?|Assignees?)\s*:/i, raw)) add("route", 4);
+  // Approve: tool call gate
+  if (has(/\b(approve|approval|tool[- ]?call|allow execution|pause for approval)\b/, t)) add("approve", 6.5);
+  if (has(/\b(Tool|Function|Args?|Arguments?)\s*:/i, raw)) add("approve", 6);
+  if (has(/\b[a-z_][\w.]*\s*\(\s*\{/, t) && has(/\b(tool|approve|allow|pause|execute)\b/, t)) add("approve", 5);
+
+  if ((s.route ?? 0) >= 5) {
+    s.note = 0;
+    s.triage = Math.min(s.triage ?? 0, 2);
+    s.contact = Math.min(s.contact ?? 0, 2);
+  }
+  if ((s.approve ?? 0) >= 5) {
+    s.note = 0;
+    s.calc = Math.min(s.calc ?? 0, 1);
+    s.eval = Math.min(s.eval ?? 0, 2);
+  }
+  // Workout: sets×reps or sets of reps with a lift
+  if (has(/\b\d+\s*[x×]\s*\d+\b/, t) && has(/[a-z]{3,}/, t) && !has(/\b(week|day|month|a week|times a week)\b/, t)) add("workout", 5.5);
+  if (has(/\b\d+\s*sets?\s*(of\s*)?\d+\b/, t)) add("workout", 6);
+  if (has(/\b(bench|squat|deadlift|press|curl|row|pull[- ]?up|push[- ]?up|overhead|rdl|hip thrust)\b/, t) && has(/\d/, t)) add("workout", 4);
+  if (has(/\b(workout|reps?)\b/, t) && has(/\d/, t) && !has(/\bof\s+\d+\s*(books?|workouts?)\b/, t)) add("workout", 3);
+  // EMI: loan installment
+  if (has(/\b(emi|loan|mortgage|installment|instalment)\b/, t)) add("emi", num ? 6.5 : 4);
+  if (has(/\b(lakh|lac|crore)s?\b/, t) && has(/\d+\s*(%|percent)/, t)) add("emi", 5);
+  if (has(/\b\d+\s*(years?|yrs?|months?|mos?)\b/, t) && has(/\d+\s*(%|percent)/, t) && has(/\b(emi|loan|principal|interest)\b/, t)) add("emi", 3);
+  // Recipe: dish + ingredients
+  if (has(/\brecipe\b|\bingredients?\s*:/, t)) add("recipe", 6.5);
+  if (has(/\b(serves?|servings?)\s+\d+\b|\bfor\s+\d+\s*(people|pax)?\b/, t) && has(/\b(with|and|,)\b/, t) && has(/[a-z]{3,}/, t)) add("recipe", 4);
+  if (has(/\b(cook|bake|pasta|pancake|cookie|soup|salad|curry|stir[- ]?fry)\b/, t) && (has(/,/, t) || has(/\bwith\b/, t))) add("recipe", 3.5);
+
+  if ((s.workout ?? 0) >= 5) {
+    s.note = 0;
+    s.habit = Math.min(s.habit ?? 0, 1.5);
+    s.goal = Math.min(s.goal ?? 0, 2);
+    s.timer = Math.min(s.timer ?? 0, 1.5);
+  }
+  if ((s.emi ?? 0) >= 5) {
+    s.note = 0;
+    s.calc = Math.min(s.calc ?? 0, 1.5);
+    s.tip = Math.min(s.tip ?? 0, 1);
+    s.split = Math.min(s.split ?? 0, 1);
+    s.expense = Math.min(s.expense ?? 0, 1.5);
+  }
+  if ((s.recipe ?? 0) >= 5) {
+    s.note = 0;
+    s.todo = Math.min(s.todo ?? 0, 2);
+  }
   return s;
 }
 
@@ -190,7 +284,7 @@ export function mockClassify(text: string): IntentResult {
   const t = text.toLowerCase().trim();
   if (t.length < 2) return noneResult({ model: MOCK_MODEL, questionCount: MOCK_QUESTION_COUNT, source: "mock" });
 
-  const probs = softmax(intentScores(t), 0.8);
+  const probs = softmax(intentScores(text), 0.8);
   const top = INTENT_KEYS.reduce((a, b) => (probs[b] > probs[a] ? b : a));
   const intent: Answer<IntentKey> = { value: top, confidence: probs[top], probabilities: probs };
 
@@ -209,6 +303,27 @@ export function mockClassify(text: string): IntentResult {
   const urgentHit = /\b(urgent|asap|immediately|right now|important|critical|!!)/.test(t);
   const soonHit = /\b(today|tonight|soon|by \d|deadline|tomorrow)\b/.test(t);
   const urgencyScore = urgentHit ? 1.75 : soonHit ? 0.9 : 0.2;
+
+  const criticalHit = /\b(outage|down|critical|p0|sev\s*0|immediate)\b/.test(t);
+  const highHit = /\b(urgent|asap|p1|sev\s*1|blocking|escalate)\b/.test(t);
+  const medHit = /\b(soon|today|p2|sev\s*2|degraded)\b/.test(t);
+  const ticketPriorityScore = criticalHit ? 3 : highHit ? 2 : medHit ? 1 : 0.2;
+
+  const qualityGood = /\b(accurate|correct|complete|well grounded|good answer)\b/.test(t);
+  const qualityPoor = /\b(wrong|incorrect|incomplete|hallucin|unsupported|poor)\b/.test(t);
+  const answerQualityScore = qualityGood ? 2 : qualityPoor ? 0.2 : 1;
+  const needsRevision = qualityPoor || /\b(revise|revision|needs?\s+fix)\b/.test(t) ? 0.88 : answerQualityScore < 1 ? 0.7 : 0.12;
+  const needsModeration =
+    /\b(toxic|harass|hate|nsfw|abuse|violat|flag|slur)\b/.test(t) ? 0.9 : /\b(policy|moderate)\b/.test(t) ? 0.55 : 0.08;
+
+  const docCategory: Answer<DocCategory> = choose(DOC_CATEGORIES, t, [
+    [/\b(invoice|budget|payment|finance|billing|receipt)\b/, "finance"],
+    [/\b(contract|legal|terms|compliance|nda)\b/, "legal"],
+    [/\b(resume|hiring|payroll|hr|onboarding|employee)\b/, "hr"],
+    [/\b(spec|roadmap|feature|product|prd)\b/, "product"],
+    [/\b(ticket|support|troubleshoot|help desk|customer)\b/, "support"],
+    [/\b(campaign|marketing|ad copy|go-to-market|gtm)\b/, "marketing"],
+  ], "other");
 
   return {
     intent,
@@ -254,6 +369,19 @@ export function mockClassify(text: string): IntentResult {
       ], "countdown"),
       hasExplicitOptions: /\b\w+\s+(or|vs)\s+\w+/.test(t) ? 0.9 : 0.05,
       isShoppingList: /\b(buy|get|groceries|shopping|milk|eggs|bread|coffee|pick up|order)\b/.test(t) ? 0.88 : 0.1,
+      ticketPriority: { score: ticketPriorityScore, confidence: 0.82 },
+      docCategory,
+      needsModeration,
+      answerQuality: { score: answerQualityScore, confidence: 0.8 },
+      needsRevision,
+      routeDecision: choose(ROUTE_DECISIONS, t, [
+        [/\b(another review|second (pass|look|review)|peer review)\b/, "another_review"],
+        [/\b(assign|owner|queue|route to)\b/, "assign"],
+      ], "unspecified") as Answer<RouteDecision>,
+      toolApproval: choose(TOOL_APPROVALS, t, [
+        [/\b(allow|execute|run|approved)\b/, "allow"],
+        [/\b(pause|hold|deny|reject|wait|approval)\b/, "pause"],
+      ], "unspecified") as Answer<ToolApproval>,
     },
     latencyMs: Math.round(90 + Math.random() * 130),
     questionCount: MOCK_QUESTION_COUNT,

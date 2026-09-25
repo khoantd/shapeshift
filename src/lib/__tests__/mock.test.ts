@@ -47,8 +47,19 @@ const EXAMPLES: [string, string][] = [
     "Bối cảnh: CRM SME Việt. Con người: CSM 5 năm; chủ SME bận. Mục tiêu: email kích hoạt trial. Tiêu chuẩn: ≤120 từ, tiếng Việt",
     "bcmt",
   ],
+  ["Title: Payment failed. Report: Customer charged twice. Service: Billing. Triage this ticket", "triage"],
+  ["Classify this document. Q3 invoice for Acme totaling 12400. Categories: finance, legal, hr, product", "classify"],
+  ["Content: You should be fired idiot. Policy: No personal attacks. Flag for moderator", "moderate"],
+  ["Request: What is our refund window? Answer: 14 days from purchase. Reference: Help center. Evaluate this answer", "eval"],
+  ["Subject: New vendor signup. Fields: company, tax id. Owners: Maya, Billing queue. Route this form", "route"],
+  ['Tool: send_email. Args: {"to":"user@acme.com","subject":"Welcome"}. Pause for approval', "approve"],
+  ["3x10 bench press 60kg", "workout"],
+  ["squats 5 sets of 5 at 100kg", "workout"],
+  ["emi on 5 lakh at 9% for 5 years", "emi"],
+  ["loan 500000 at 8.5% for 36 months", "emi"],
+  ["pasta with garlic, tomato and olive oil for 2", "recipe"],
+  ["recipe: chocolate chip cookies. ingredients: flour, butter, sugar, eggs", "recipe"],
 ];
-
 describe("mock classifier", () => {
   test("question count matches schema", () => expect(MOCK_QUESTION_COUNT).toBe(QUESTION_COUNT));
   for (const [text, intent] of EXAMPLES) {

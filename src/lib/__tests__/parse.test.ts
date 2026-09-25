@@ -330,7 +330,7 @@ describe("goal", () => {
   test("no target", () => expect(parseGoal("learn piano").target).toBeNull());
 });
 
-import { composeRtcfc, parseRtcfc } from "@/lib/parse/rtcfc";
+import { composeRtcfc, parseRtcfc, rollRtcfc, RTCFC_SAMPLES } from "@/lib/parse/rtcfc";
 
 describe("rtcfc", () => {
   test("one-liner marketing", () => {
@@ -378,9 +378,27 @@ describe("rtcfc", () => {
       }),
     ).toBe("Role: a\nTask: b\nContext: c\nFormat: d\nConstraints: e");
   });
+  test("samples are complete", () => {
+    for (const s of RTCFC_SAMPLES) {
+      expect(s.role.trim()).toBeTruthy();
+      expect(s.task.trim()).toBeTruthy();
+      expect(s.context.trim()).toBeTruthy();
+      expect(s.format.trim()).toBeTruthy();
+      expect(s.constraints.trim()).toBeTruthy();
+    }
+  });
+  test("roll avoids immediate repeat", () => {
+    const first = RTCFC_SAMPLES[0]!;
+    const next = rollRtcfc(() => 0, first);
+    expect(next).not.toEqual(first);
+  });
+  test("compose(parse(compose(sample))) round-trips fields", () => {
+    const sample = RTCFC_SAMPLES[0]!;
+    expect(parseRtcfc(composeRtcfc(sample))).toEqual(sample);
+  });
 });
 
-import { composeBcmt, parseBcmt } from "@/lib/parse/bcmt";
+import { BCMT_CORE, BCMT_SAMPLES, composeBcmt, parseBcmt, rollBcmt } from "@/lib/parse/bcmt";
 
 describe("bcmt", () => {
   test("one-liner SME email sample", () => {
@@ -459,6 +477,20 @@ c
 d
 </tiêu_chuẩn>`);
   });
+  test("samples have complete cores", () => {
+    for (const s of BCMT_SAMPLES) {
+      for (const k of BCMT_CORE) expect(s[k].trim()).toBeTruthy();
+    }
+  });
+  test("roll avoids immediate repeat", () => {
+    const first = BCMT_SAMPLES[0]!;
+    const next = rollBcmt(() => 0, first);
+    expect(next).not.toEqual(first);
+  });
+  test("compose(parse(compose(sample))) round-trips fields", () => {
+    const sample = BCMT_SAMPLES[1]!;
+    expect(parseBcmt(composeBcmt(sample))).toEqual(sample);
+  });
   test("compose includes input when set", () => {
     expect(
       composeBcmt({
@@ -470,4 +502,159 @@ d
       }),
     ).toContain("<đầu_vào>\n{ticket}\n</đầu_vào>");
   });
+});
+
+import { parseTriage } from "@/lib/parse/triage";
+import { parseClassify } from "@/lib/parse/classify";
+import { parseModerate } from "@/lib/parse/moderate";
+import { parseEval } from "@/lib/parse/eval";
+import { priorityFromScore, qualityLabel } from "@/lib/parse/priority";
+import { DOC_CATEGORIES } from "@/lib/jev/types";
+
+describe("triage", () => {
+  test("labeled fields", () => {
+    const d = parseTriage("Title: Payment failed. Report: Charged twice. Service: Billing API");
+    expect(d.title).toBe("Payment failed");
+    expect(d.report).toBe("Charged twice");
+    expect(d.context).toBe("Billing API");
+  });
+  test("multiline free text", () => {
+    const d = parseTriage("Checkout outage\nUsers cannot pay on mobile");
+    expect(d.title).toBe("Checkout outage");
+    expect(d.report).toContain("cannot pay");
+  });
+  test("bare keyword", () => expect(parseTriage("triage")).toEqual({ title: "", report: "", context: "" }));
+});
+
+describe("classify", () => {
+  test("body with categories line", () => {
+    const d = parseClassify("Q3 invoice for Acme Corp.\nCategories: finance, legal, hr");
+    expect(d.body).toContain("invoice");
+    expect(d.categories).toEqual(["finance", "legal", "hr"]);
+  });
+  test("defaults to built-in categories", () => {
+    const d = parseClassify("classify this product roadmap draft for Q4");
+    expect(d.body.toLowerCase()).toContain("roadmap");
+    expect(d.categories).toEqual([...DOC_CATEGORIES]);
+  });
+});
+
+describe("moderate", () => {
+  test("labeled content and policy", () => {
+    const d = parseModerate("Content: You should be fired. Policy: No personal attacks");
+    expect(d.content).toContain("fired");
+    expect(d.policy).toContain("personal attacks");
+  });
+  test("plain content", () => {
+    expect(parseModerate("moderate this toxic slur in chat")).toMatchObject({ content: expect.stringContaining("toxic") });
+  });
+});
+
+describe("eval", () => {
+  test("request answer reference", () => {
+    const d = parseEval("Request: What is our refund window? Answer: 14 days. Reference: Help center §3");
+    expect(d.request).toContain("refund");
+    expect(d.answer).toContain("14 days");
+    expect(d.reference).toContain("Help center");
+  });
+  test("incomplete without labels", () => expect(parseEval("evaluate this")).toEqual({ request: "", answer: "", reference: "" }));
+});
+
+describe("priority helpers", () => {
+  test("score bands", () => {
+    expect(priorityFromScore(0)).toBe("p3");
+    expect(priorityFromScore(1)).toBe("p2");
+    expect(priorityFromScore(2)).toBe("p1");
+    expect(priorityFromScore(3)).toBe("p0");
+  });
+  test("quality labels", () => {
+    expect(qualityLabel(0)).toBe("Poor");
+    expect(qualityLabel(1)).toBe("Acceptable");
+    expect(qualityLabel(2)).toBe("Good");
+  });
+});
+
+import { parseRoute } from "@/lib/parse/route";
+import { parseApprove } from "@/lib/parse/approve";
+import { parseWorkout } from "@/lib/parse/workout";
+import { emiAmounts, parseEmi } from "@/lib/parse/emi";
+import { parseRecipe } from "@/lib/parse/recipe";
+
+describe("route", () => {
+  test("labeled subject and owners", () => {
+    const d = parseRoute("Subject: New vendor signup. Fields: company, tax id. Owners: Maya, Billing queue");
+    expect(d.subject).toBe("New vendor signup");
+    expect(d.fields).toContain("company");
+    expect(d.owners).toEqual(["Maya", "Billing Queue"]);
+  });
+  test("bare keyword", () => expect(parseRoute("route")).toEqual({ subject: "", fields: "", owners: [] }));
+});
+
+describe("approve", () => {
+  test("labeled tool and args", () => {
+    const d = parseApprove('Tool: send_email. Args: {"to":"user@acme.com"}. Rationale: welcome drip');
+    expect(d.tool).toBe("send_email");
+    expect(d.args).toContain("user@acme.com");
+    expect(d.rationale).toContain("welcome");
+  });
+  test("call shape", () => {
+    const d = parseApprove("approve send_email({\"to\":\"a@b.com\"})");
+    expect(d.tool).toBe("send_email");
+    expect(d.args).toContain("a@b.com");
+  });
+});
+
+describe("workout", () => {
+  test("3x10 with weight", () => {
+    const d = parseWorkout("3x10 bench press 60kg");
+    expect(d.sets).toBe(3);
+    expect(d.reps).toBe(10);
+    expect(d.weight).toBe(60);
+    expect(d.unit).toBe("kg");
+    expect(d.exercise.toLowerCase()).toContain("bench");
+  });
+  test("sets of", () => {
+    const d = parseWorkout("squats 5 sets of 5 at 100kg");
+    expect(d.sets).toBe(5);
+    expect(d.reps).toBe(5);
+    expect(d.weight).toBe(100);
+    expect(d.exercise.toLowerCase()).toContain("squat");
+  });
+  test("bare keyword", () => expect(parseWorkout("workout")).toEqual({ exercise: "", sets: null, reps: null, weight: null, unit: null }));
+});
+
+describe("emi", () => {
+  test("lakh and years", () => {
+    const d = parseEmi("emi on 5 lakh at 9% for 5 years");
+    expect(d.principal).toBe(500_000);
+    expect(d.annualRate).toBe(9);
+    expect(d.tenureMonths).toBe(60);
+  });
+  test("months and dollars", () => {
+    const d = parseEmi("loan $50000 at 8.5% for 36 months");
+    expect(d.principal).toBe(50_000);
+    expect(d.annualRate).toBe(8.5);
+    expect(d.tenureMonths).toBe(36);
+    expect(d.currency).toBe("$");
+  });
+  test("emiAmounts known value", () => {
+    const { monthly } = emiAmounts({ principal: 500_000, annualRate: 9, tenureMonths: 60 });
+    expect(monthly).not.toBeNull();
+    expect(monthly!).toBeGreaterThan(10_000);
+    expect(monthly!).toBeLessThan(11_000);
+  });
+});
+
+describe("recipe", () => {
+  test("with ingredients and servings", () => {
+    const d = parseRecipe("pasta with garlic, tomato and olive oil for 2");
+    expect(d.title.toLowerCase()).toContain("pasta");
+    expect(d.servings).toBe(2);
+    expect(d.ingredients.length).toBeGreaterThanOrEqual(3);
+  });
+  test("labeled ingredients", () => {
+    const d = parseRecipe("ingredients: eggs, flour, milk — pancakes");
+    expect(d.ingredients.map((i) => i.toLowerCase())).toEqual(expect.arrayContaining(["eggs", "flour", "milk"]));
+  });
+  test("bare keyword", () => expect(parseRecipe("recipe")).toEqual({ title: "", ingredients: [], servings: null }));
 });

@@ -9,6 +9,8 @@ export type CardProps<D> = {
   signals: GatedSignals;
   /** False while the card is a ghost preview. */
   interactive: boolean;
+  /** Replace the shell textarea (e.g. RTCFC/BCMT sample roll). */
+  onApplyText?: (text: string) => void;
 };
 
 export type BadgeSpec = { id: string; label: string; icon?: LucideIcon; tone?: "caution" | "brand" };

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Shuffle } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { composeRtcfc, RTCFC_FIELDS, type RtcfcData, type RtcfcField } from "@/lib/parse/rtcfc";
+import { spring, tween } from "@/lib/motion";
+import { composeRtcfc, RTCFC_FIELDS, rollRtcfc, type RtcfcData, type RtcfcField } from "@/lib/parse/rtcfc";
 import { Field, Meta, Missing } from "./shared";
 import type { CardProps } from "./types";
 
@@ -23,11 +25,29 @@ const HINTS: Record<RtcfcField, string> = {
   constraints: "Must-do / must-not-do",
 };
 
-export function RtcfcCard({ data, interactive }: CardProps<RtcfcData>) {
+function isEmpty(d: RtcfcData) {
+  return RTCFC_FIELDS.every((k) => !d[k].trim());
+}
+
+export function RtcfcCard({ data, interactive, onApplyText }: CardProps<RtcfcData>) {
+  const reduce = useReducedMotion();
   const [copied, setCopied] = useState(false);
+  const [rolls, setRolls] = useState(0);
   const filled = RTCFC_FIELDS.filter((k) => data[k].trim()).length;
   const prompt = composeRtcfc(data);
   const canCopy = filled > 0 && interactive;
+  const empty = isEmpty(data);
+
+  useEffect(() => {
+    if (!interactive || !empty || !onApplyText) return;
+    onApplyText(composeRtcfc(rollRtcfc()));
+  }, [interactive, empty, onApplyText]);
+
+  function roll() {
+    if (!interactive || !onApplyText) return;
+    onApplyText(composeRtcfc(rollRtcfc(Math.random, data)));
+    setRolls((n) => n + 1);
+  }
 
   async function copy() {
     if (!canCopy) return;
@@ -42,39 +62,54 @@ export function RtcfcCard({ data, interactive }: CardProps<RtcfcData>) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-2">
+      <div className="flex justify-end gap-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={!canCopy}
+          onClick={copy}
+          className="gap-1.5 px-3.5"
+          aria-label={copied ? "Copied" : "Copy prompt"}
+        >
+          {copied ? <Check /> : <Copy />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          onClick={roll}
+          disabled={!interactive || !onApplyText}
+          className="gap-1.5 px-3.5"
+          aria-label="Roll again"
+        >
+          <Shuffle />
+          Roll again
+        </Button>
+      </div>
+      <div className="flex flex-col gap-2" aria-live="polite">
         {RTCFC_FIELDS.map((key, i) => (
           <Field key={key} index={i} className="flex flex-col gap-0.5">
             <Meta>{LABELS[key]}</Meta>
-            {data[key].trim() ? (
-              <p className="text-[15px] leading-[22px] text-pretty break-words">{data[key]}</p>
-            ) : (
-              <Missing>{HINTS[key]}</Missing>
-            )}
+            <AnimatePresence mode="popLayout" initial={false}>
+              {data[key].trim() ? (
+                <motion.p
+                  key={`${rolls}-${key}-${data[key]}`}
+                  initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, filter: "blur(4px)" }}
+                  animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                  exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98, filter: "blur(4px)", transition: tween.exit }}
+                  transition={reduce ? tween.fade : { ...spring.snappy, delay: i * 0.03 }}
+                  className="text-[15px] leading-[22px] text-pretty break-words"
+                >
+                  {data[key]}
+                </motion.p>
+              ) : (
+                <Missing key={`${rolls}-${key}-missing`}>{HINTS[key]}</Missing>
+              )}
+            </AnimatePresence>
           </Field>
         ))}
       </div>
-      {filled > 0 && (
-        <Field index={5} className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
-            <Meta>Prompt</Meta>
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              disabled={!canCopy}
-              onClick={copy}
-              aria-label={copied ? "Copied" : "Copy prompt"}
-            >
-              {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-              {copied ? "Copied" : "Copy"}
-            </Button>
-          </div>
-          <pre className="max-h-40 overflow-auto rounded-md bg-secondary/80 px-3 py-2 text-[12px] leading-5 whitespace-pre-wrap break-words text-ink-2">
-            {prompt}
-          </pre>
-        </Field>
-      )}
     </div>
   );
 }

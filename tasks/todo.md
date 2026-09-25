@@ -4,8 +4,12 @@
 
 ## Current sprint
 
-- [ ] _(add tasks from `/plan` or user request)_
+- [x] RTCFC Prompt demotion (Copy beside Roll again)
+- [x] Decision cards (triage → approve) + JevIntro
+- [x] Personal cards: workout, EMI, recipe
+- [ ] Vercel GitHub App + `TYPESAFE_API_KEY` / `JEV_MODEL` env
+- [ ] Commit + push to trigger deploy (once App connected)
 
 ## Backlog
 
-- [ ] _(optional follow-ups)_
+- [ ] Response-model selection (needs multi-model invoke)

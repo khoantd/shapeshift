@@ -72,6 +72,16 @@ Restart `bun dev`. The latency readout in the bottom-right corner switches from 
 | Random | `roll 2d6`, `flip a coin`, `pick one: tacos, sushi or pizza` |
 | Goal | `read 12 books this year, 4 done` |
 | RTCFC | `Role: staff engineer. Task: review this PR. Context: NestJS. Format: severity table. Constraints: skip style nits` |
+| BCMT | `Bối cảnh: … Con người: … Mục tiêu: … Tiêu chuẩn: …` |
+| Triage | `Title: Payment failed. Report: Customer charged twice. Service: Billing. Triage this ticket` |
+| Classify | `Classify this document. Q3 invoice for Acme. Categories: finance, legal, hr, product` |
+| Moderate | `Content: You should be fired idiot. Policy: No personal attacks. Flag for moderator` |
+| Eval | `Request: What is our refund window? Answer: 14 days. Reference: Help center. Evaluate this answer` |
+| Route | `Subject: New vendor signup. Fields: company, tax id. Owners: Maya, Billing queue. Route this form` |
+| Approve | `Tool: send_email. Args: {"to":"user@acme.com"}. Pause for approval` |
+| Workout | `3x10 bench press 60kg` |
+| EMI | `emi on 5 lakh at 9% for 5 years` |
+| Recipe | `pasta with garlic, tomato and olive oil for 2` |
 | Note | anything else |
 
 Saved cards live in your browser (`localStorage`) until you delete them. Click one to edit it.

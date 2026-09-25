@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, MotionConfig, useReducedMotion, useSpring } from "motion/react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { registry } from "@/components/intents/registry";
 import { useDemoScript } from "@/hooks/useDemoScript";
 import { useIntent } from "@/hooks/useIntent";
@@ -17,6 +17,7 @@ import { CyclingPlaceholder } from "./CyclingPlaceholder";
 import { DebugPanel } from "./DebugPanel";
 import { GhostPreview } from "./GhostPreview";
 import { FirstRunHint } from "./FirstRunHint";
+import { JevIntro } from "./JevIntro";
 import { IntentChips } from "./IntentChips";
 import { IntentPalette } from "./IntentPalette";
 import { LatencyHud } from "./LatencyHud";
@@ -62,6 +63,7 @@ function IntentCard<K extends CardIntent>(props: {
   ghost: boolean;
   editing: boolean;
   onConfirm: () => void;
+  onApplyText?: (text: string) => void;
 }) {
   const { intent, text, signals } = props;
   const data = useMemo(() => parseFor(intent, text, { colorMood: signals.colorMood }), [intent, text, signals.colorMood]);
@@ -128,6 +130,7 @@ export function Shapeshift() {
   // Announce commits (and completions) for screen readers.
   const committedIntent = ui.kind === "committed" ? ui.intent : null;
   const liveMessage = committedIntent ? `Showing ${registry[committedIntent].label.toLowerCase()} card` : announcement;
+  const showJevIntro = !flags.demo && !intent && ui.kind !== "choose";
 
   /** Clear the input. When editing a saved item, it returns to the list unchanged. */
   const reset = () => {
@@ -140,6 +143,10 @@ export function Shapeshift() {
       setDraftId(newId());
     }
   };
+  const resetRef = useRef(reset);
+  useEffect(() => {
+    resetRef.current = reset;
+  });
 
   const complete = (): boolean => {
     const target: CardIntent | null =
@@ -214,6 +221,17 @@ export function Shapeshift() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  /** RTCFC/BCMT sample roll writes the composed prompt into the shell. */
+  const applyText = useCallback((t: string) => {
+    setText(t);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(t.length, t.length);
+    });
+  }, []);
+
   // Dashed "Add …" chips type their connecting word into the input.
   const draft = useMemo(
     () => ({
@@ -237,7 +255,15 @@ export function Shapeshift() {
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const atEnd = e.currentTarget.selectionStart === text.length;
-    const multilinePrompt = intent === "rtcfc" || intent === "bcmt";
+    const multilinePrompt =
+      intent === "rtcfc" ||
+      intent === "bcmt" ||
+      intent === "triage" ||
+      intent === "classify" ||
+      intent === "moderate" ||
+      intent === "eval" ||
+      intent === "route" ||
+      intent === "approve";
     if (e.key === "/" && text === "") {
       e.preventDefault();
       setPaletteOpen(true);
@@ -274,7 +300,9 @@ export function Shapeshift() {
     clear: reset,
   });
 
-  // Focus the input on load, and whenever "/" is pressed elsewhere on the page.
+  // Focus the input on load. "/" anywhere (outside fields) opens the palette;
+  // Escape clears even when focus is on a card control (Select, button), but
+  // defers to open overlays (Select listbox, Command dialog).
   useEffect(() => {
     inputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -283,6 +311,12 @@ export function Shapeshift() {
         e.preventDefault();
         inputRef.current?.focus();
         if (!inputRef.current?.value) setPaletteOpen(true);
+      } else if (e.key === "Escape") {
+        if (el?.closest("textarea")) return; // shell textarea handler already clears
+        if (el?.closest("[role=dialog], [role=listbox]")) return; // overlay owns Escape
+        e.preventDefault();
+        resetRef.current();
+        inputRef.current?.focus();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -291,8 +325,9 @@ export function Shapeshift() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <main id="main" className="mx-auto w-full max-w-[560px] px-4 pt-[14vh] pb-24 sm:px-0 sm:pt-[22vh]">
-        <h1 className="sr-only">Shapeshift</h1>
+      <main id="main" className="mx-auto w-full max-w-[560px] px-4 pt-[10vh] pb-24 sm:px-0 sm:pt-[16vh]">
+        {!showJevIntro && <h1 className="sr-only">Shapeshift</h1>}
+        <JevIntro show={showJevIntro} />
         <MorphContainer readiness={readiness} edge={ghost ? null : (meta?.edge ?? null)}>
           <motion.div layout="position" className="relative min-h-[72px] px-5 py-5">
             <textarea
@@ -313,7 +348,18 @@ export function Shapeshift() {
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
-              enterKeyHint={intent === "rtcfc" || intent === "bcmt" ? "enter" : "done"}
+              enterKeyHint={
+                intent === "rtcfc" ||
+                intent === "bcmt" ||
+                intent === "triage" ||
+                intent === "classify" ||
+                intent === "moderate" ||
+                intent === "eval" ||
+                intent === "route" ||
+                intent === "approve"
+                  ? "enter"
+                  : "done"
+              }
               className="relative z-[1] block w-full resize-none overflow-y-auto bg-transparent pe-6 text-[22px] leading-8 font-[450] tracking-[-0.01em] text-foreground caret-brand outline-none"
               style={{ minHeight: LINE, maxHeight: LINE * MAX_LINES }}
             />
@@ -339,7 +385,16 @@ export function Shapeshift() {
               >
                 <GhostPreview ghost={ghost}>
                   <DraftContext value={draft}>
-                    <IntentCard intent={intent} text={text} signals={gated} readiness={readiness} ghost={ghost} editing={editingId !== null} onConfirm={complete} />
+                    <IntentCard
+                      intent={intent}
+                      text={text}
+                      signals={gated}
+                      readiness={readiness}
+                      ghost={ghost}
+                      editing={editingId !== null}
+                      onConfirm={complete}
+                      onApplyText={applyText}
+                    />
                   </DraftContext>
                 </GhostPreview>
               </motion.div>
@@ -359,7 +414,7 @@ export function Shapeshift() {
         <RecentStack items={saved.filter((x) => x.id !== editingId)} flyingId={flyingId} onOpen={reopen} onDelete={remove} />
 
         <p id="shapeshift-hint" className="sr-only">
-          Type anything. Enter adds the card, except for RTCFC and BCMT prompts where Enter inserts a new line and Command or Control Enter adds the card. Escape
+          Type anything. Enter adds the card, except for prompt and decision cards where Enter inserts a new line and Command or Control Enter adds the card. Escape
           clears, Tab keeps a preview, slash opens every card type.
         </p>
         <div role="status" aria-live="polite" className="sr-only">

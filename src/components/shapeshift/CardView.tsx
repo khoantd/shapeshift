@@ -23,9 +23,10 @@ type Props<K extends CardIntent> = {
   /** Reopened from the saved list: Enter saves, Esc cancels. */
   editing?: boolean;
   onConfirm: () => void;
+  onApplyText?: (text: string) => void;
 };
 
-export function CardView<K extends CardIntent>({ intent, data, signals, readiness, ghost, editing, onConfirm }: Props<K>) {
+export function CardView<K extends CardIntent>({ intent, data, signals, readiness, ghost, editing, onConfirm, onApplyText }: Props<K>) {
   const def = registry[intent];
   const reduce = useReducedMotion();
   const Icon = def.headerIcon?.(signals, data) ?? def.icon;
@@ -74,7 +75,7 @@ export function CardView<K extends CardIntent>({ intent, data, signals, readines
           exit={reduce ? { opacity: 0, transition: tween.exit } : { opacity: 0, scale: 0.98, filter: "blur(4px)", transition: tween.exit }}
           transition={reduce ? tween.fade : { ...spring.settle, delay: 0.04 }}
         >
-          <Body data={data} signals={signals} interactive={!ghost} />
+          <Body data={data} signals={signals} interactive={!ghost} onApplyText={onApplyText} />
         </motion.div>
       </AnimatePresence>
 
@@ -91,7 +92,14 @@ export function CardView<K extends CardIntent>({ intent, data, signals, readines
             <motion.div style={{ opacity: btnOpacity, y: btnY }}>
               <Button size="sm" onClick={onConfirm} className="gap-1.5 rounded-full pr-2 pl-3">
                 {editing ? "Save" : "Add"} {def.label.toLowerCase()}
-                {intent === "rtcfc" || intent === "bcmt" ? (
+                {intent === "rtcfc" ||
+                intent === "bcmt" ||
+                intent === "triage" ||
+                intent === "classify" ||
+                intent === "moderate" ||
+                intent === "eval" ||
+                intent === "route" ||
+                intent === "approve" ? (
                   <span className="flex items-center gap-0.5 opacity-60" aria-hidden>
                     <Kbd className="h-4 min-w-4 px-1 text-[10px]">⌘</Kbd>
                     <Kbd className="h-4 min-w-4 px-1 text-[10px]">↵</Kbd>

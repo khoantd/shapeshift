@@ -134,3 +134,60 @@ export function composeBcmt(d: BcmtData): string {
 export function completeBcmt(d: BcmtData) {
   return BCMT_CORE.filter((k) => d[k].trim()).length / BCMT_CORE.length;
 }
+
+/** Curated complete prompts for empty-card auto-fill and “Roll again”. */
+export const BCMT_SAMPLES: readonly BcmtData[] = [
+  {
+    context: "CRM SME Việt Nam, sản phẩm trial 14 ngày",
+    people: "Bạn là CSM 5 năm. Người đọc là chủ SME bận rộn",
+    goal: "Viết email kích hoạt trial, mục tiêu đặt demo 15 phút",
+    standards: "≤120 từ · tiếng Việt · không emoji · CTA rõ ràng",
+    input: "",
+  },
+  {
+    context: "Monorepo NestJS + Next.js, PR đang mở",
+    people: "Bạn là staff engineer 10 năm NestJS. Người đọc là dev tác giả PR",
+    goal: "Chỉ ra lỗi correctness và rủi ro bảo mật trong diff",
+    standards: "Bảng Markdown Severity P0–P3 · tối đa 15 finding · kèm file:line",
+    input: "{diff}",
+  },
+  {
+    context: "Landing page SaaS B2B, chuyển đổi thấp ở form đăng ký",
+    people: "Bạn là product designer. Người đọc là PM và marketing",
+    goal: "Đề xuất 3 thay đổi onboarding có thể ship trong 1 sprint",
+    standards: "Bullet: vấn đề → lý do → fix · không thêm trang mới",
+    input: "",
+  },
+  {
+    context: "CLI TypeScript publish trên npm, Node 20+",
+    people: "Bạn là technical writer. Người đọc là developer mới dùng tool",
+    goal: "Soạn quickstart README đủ để chạy lệnh đầu tiên",
+    standards: "Markdown: Install · Usage · Flags · Example · không marketing",
+    input: "",
+  },
+  {
+    context: "App thương mại điện tử, Stripe + guest checkout",
+    people: "Bạn là QA lead. Người đọc là eng team",
+    goal: "Sinh test case regression cho luồng thanh toán",
+    standards: "Bảng: ID · Steps · Expected · Priority · ≥2 negative path",
+    input: "",
+  },
+  {
+    context: "Công ty SaaS cân nhắc mở rộng mid-market",
+    people: "Bạn là executive coach. Người đọc là CEO",
+    goal: "Chuyển ghi chú thô thành brief 5 gạch đầu dòng",
+    standards: "Đúng 5 bullet · mỗi bullet một câu · ghi rõ điểm chưa chắc",
+    input: "{notes}",
+  },
+];
+
+function sameBcmt(a: BcmtData, b: BcmtData) {
+  return BCMT_FIELDS.every((k) => a[k] === b[k]);
+}
+
+/** Pick a random complete BCMT sample; optionally avoid repeating `exclude`. */
+export function rollBcmt(rand: () => number = Math.random, exclude?: BcmtData): BcmtData {
+  const pool =
+    exclude && BCMT_SAMPLES.length > 1 ? BCMT_SAMPLES.filter((s) => !sameBcmt(s, exclude)) : BCMT_SAMPLES;
+  return pool[Math.floor(rand() * pool.length)]!;
+}

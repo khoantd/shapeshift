@@ -21,6 +21,15 @@ import { completeRandom, parseRandom, type RandomData } from "./random";
 import { completeGoal, parseGoal, type GoalData } from "./goal";
 import { completeRtcfc, parseRtcfc, type RtcfcData } from "./rtcfc";
 import { completeBcmt, parseBcmt, type BcmtData } from "./bcmt";
+import { completeTriage, parseTriage, type TriageData } from "./triage";
+import { completeClassify, parseClassify, type ClassifyData } from "./classify";
+import { completeModerate, parseModerate, type ModerateData } from "./moderate";
+import { completeEval, parseEval, type EvalData } from "./eval";
+import { completeRoute, parseRoute, type RouteData } from "./route";
+import { completeApprove, parseApprove, type ApproveData } from "./approve";
+import { completeWorkout, parseWorkout, type WorkoutData } from "./workout";
+import { completeEmi, parseEmi, type EmiData } from "./emi";
+import { completeRecipe, parseRecipe, type RecipeData } from "./recipe";
 
 export type ParsedMap = {
   event: EventData;
@@ -44,6 +53,15 @@ export type ParsedMap = {
   goal: GoalData;
   rtcfc: RtcfcData;
   bcmt: BcmtData;
+  triage: TriageData;
+  classify: ClassifyData;
+  moderate: ModerateData;
+  eval: EvalData;
+  route: RouteData;
+  approve: ApproveData;
+  workout: WorkoutData;
+  emi: EmiData;
+  recipe: RecipeData;
   note: NoteData;
 };
 
@@ -76,6 +94,15 @@ export const parsers: { [K in CardIntent]: Parser<K> } = {
   goal: { parse: (t) => parseGoal(t), complete: completeGoal },
   rtcfc: { parse: (t) => parseRtcfc(t), complete: completeRtcfc },
   bcmt: { parse: (t) => parseBcmt(t), complete: completeBcmt },
+  triage: { parse: (t) => parseTriage(t), complete: completeTriage },
+  classify: { parse: (t) => parseClassify(t), complete: completeClassify },
+  moderate: { parse: (t) => parseModerate(t), complete: completeModerate },
+  eval: { parse: (t) => parseEval(t), complete: completeEval },
+  route: { parse: (t) => parseRoute(t), complete: completeRoute },
+  approve: { parse: (t) => parseApprove(t), complete: completeApprove },
+  workout: { parse: (t) => parseWorkout(t), complete: completeWorkout },
+  emi: { parse: (t) => parseEmi(t), complete: completeEmi },
+  recipe: { parse: (t) => parseRecipe(t), complete: completeRecipe },
   note: { parse: (t) => parseNote(t), complete: completeNote },
 };
 

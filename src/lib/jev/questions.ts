@@ -32,6 +32,15 @@ export const questions = {
     goal: "Tracking progress toward a numeric target, such as 4 of 12 books read or money saved",
     rtcfc: "Building an RTCFC or RTF-style AI prompt with Role, Task, Context, Format, and Constraints sections",
     bcmt: "Building a BCMT-style AI prompt with Bối cảnh, Con người, Mục tiêu, and Tiêu chuẩn sections (optional Đầu vào)",
+    triage: "Prioritizing a support ticket, incident or customer report with a suggested priority level",
+    classify: "Categorizing a document or piece of text into a known category",
+    moderate: "Reviewing content against a policy to decide whether a moderator should flag it",
+    eval: "Evaluating a generated answer against a user request and reference material",
+    route: "Routing a form or request by assigning an owner or asking for another review",
+    approve: "Reviewing a proposed tool call to allow execution or pause for approval",
+    workout: "Logging a single strength exercise with sets, reps and optional weight, e.g. '3x10 bench press 60kg'",
+    emi: "Calculating a loan EMI or monthly installment from principal, interest rate and tenure",
+    recipe: "Capturing a recipe with a dish name, ingredients list and optional servings",
     note: "Writing a thought, idea or note that is none of the above",
     none: "Too short, unclear or unfinished to tell yet",
   }),
@@ -100,6 +109,40 @@ export const questions = {
   }),
   hasExplicitOptions: noul("The text names two or more explicit options to pick between"),
   isShoppingList: noul("The listed items are things to buy"),
+
+  // ── Decision / review cards ─────────────────────────────────
+  ticketPriority: score("Suggested priority for this support ticket or customer report", [
+    "Low — can wait in the normal queue",
+    "Medium — should be handled soon",
+    "High — needs prompt attention",
+    "Critical — needs immediate attention",
+  ]),
+  docCategory: choice("Which category best fits this document or text", {
+    finance: "Invoices, budgets, payments or financial reports",
+    legal: "Contracts, terms, compliance or legal notices",
+    hr: "Resumes, hiring, payroll or people operations",
+    product: "Specs, roadmaps, feature notes or product docs",
+    support: "Customer tickets, help articles or troubleshooting",
+    marketing: "Campaigns, copy, ads or go-to-market material",
+    other: "Something else or not about categorizing a document",
+  }),
+  needsModeration: noul("The content likely violates policy and should be flagged for a moderator"),
+  answerQuality: score("How well the generated answer matches the request and reference material", [
+    "Poor — incomplete, wrong or unsupported",
+    "Acceptable — mostly fine with minor gaps",
+    "Good — accurate, complete and well grounded",
+  ]),
+  needsRevision: noul("The generated answer should be revised before it is accepted"),
+  routeDecision: choice("How this form or request should be routed", {
+    assign: "Assign an owner or queue and move it forward",
+    another_review: "Request another review before assigning",
+    unspecified: "Not about routing a form or request",
+  }),
+  toolApproval: choice("Whether the proposed tool call should run", {
+    allow: "Allow execution of the tool call",
+    pause: "Pause and wait for human approval",
+    unspecified: "Not about reviewing a tool call",
+  }),
 };
 
 export const QUESTION_COUNT = Object.keys(questions).length;

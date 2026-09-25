@@ -6,50 +6,59 @@
 
 | Field | Value |
 |-------|-------|
-| **Updated** | 2026-09-24 |
+| **Updated** | 2026-09-25 |
 | **Phase** | build |
 | **Tool** | cursor |
 | **Persona** | _(optional)_ |
 
 ## Goal
 
-Add BCMT prompt card (Bối Cảnh – Con Người – Mục Tiêu – Tiêu Chuẩn), mirroring RTCFC.
+Ship decision cards + RTCFC polish + personal cards (workout, EMI, recipe); connect Vercel deploys.
 
 ## Done
 
-- Tip + RTCFC intents end-to-end (prior)
-- Shell: auto-growing wrapping `<textarea>` + RTCFC/BCMT newline Enter
-- **BCMT intent** end-to-end: parse/compose VN tags, card UI, mock classify, multiline shell
-- Key files: `src/lib/parse/bcmt.ts`, `src/components/intents/BcmtCard.tsx`, registry/mock/questions/types
+- Tip + RTCFC + BCMT intents; Roll again samples (prior)
+- **JevIntro:** brand-first header above input
+- **Decision cards:** triage, classify, moderate, eval, route, approve
+- **RTCFC:** Prompt `<pre>` demoted; Copy beside Roll again
+- **Personal cards:** workout, emi, recipe (parsers, cards, registry, mock, tests)
+- Key files: `src/lib/parse/{workout,emi,recipe}.ts`, `src/components/intents/{Workout,Emi,Recipe}Card.tsx`
+- `bun run check` green
 
 ## In progress
 
-- _(none)_
-- **Blockers:** none
+- Vercel GitHub App install + project env (`TYPESAFE_API_KEY`, `JEV_MODEL`)
+- **Blockers:** GitHub App may still need manual install for push deploys
 
 ## Next
 
-1. Optional: demote RTCFC Prompt block redundancy vs wrapped input
-2. Next card candidates: workout set, EMI, recipe
-3. Optional: more BCMT domain sample placeholders in cycling hint
+1. Install [Vercel GitHub App](https://github.com/apps/vercel) and connect `khoantd/shapeshift` (if not already)
+2. Confirm `TYPESAFE_API_KEY` / `JEV_MODEL` on Vercel project
+3. Deferred: response-model selection (needs multi-model invoke)
 
 ## Decisions
 
-- Compose output uses VN skeleton tags (`<bối_cảnh>` …); `đầu_vào` only when filled
-- Completeness = 4 core fields; input is optional
-- Enter newline for both `rtcfc` and `bcmt`; mutual exclusion in mock scoring
+- Decision cards stay localStorage / offline-first; Approve is UI-only (no tool runner)
+- `routeDecision`: assign | another_review; owners parsed deterministically
+- `toolApproval`: allow | pause
+- Enter newline for decision cards + rtcfc/bcmt; ⌘/Ctrl+Enter saves
+- Workout vs habit: one-session sets×reps, not recurring routine
+- EMI: reducing-balance; lakh/crore principal scaling
+- Recipe vs todo: cooking framing (ingredients / serves)
 
 ## Gotchas
 
 - Demo / reopen / draft append still use textarea `setSelectionRange`
 - `bun run check` = typecheck + lint + test
-- English `Context:` / `Goal:` alone are weak BCMT signals — need People/Standards or VN labels
+- `showJevIntro` = `!demo && !intent && ui.kind !== "choose"`
+- MOCK_QUESTION_COUNT remains 21 (no new signal questions)
+- EMI rate regex must not use trailing `\b` after `%`
 
 ## Pointers
 
 | Item | Location |
 |------|----------|
-| Spec | _(BCMT from VN prompt samples)_ |
+| Spec | HITL decision cards + personal cards plan |
 | Tasks | `tasks/todo.md` |
-| Branch | _(current)_ |
-| Key files | `src/lib/parse/bcmt.ts`, `src/components/intents/BcmtCard.tsx` |
+| Branch | `main` |
+| Key files | `WorkoutCard.tsx`, `EmiCard.tsx`, `RecipeCard.tsx`, `RtcfcCard.tsx` |
