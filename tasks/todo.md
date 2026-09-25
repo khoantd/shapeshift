@@ -7,8 +7,8 @@
 - [x] RTCFC Prompt demotion (Copy beside Roll again)
 - [x] Decision cards (triage → approve) + JevIntro
 - [x] Personal cards: workout, EMI, recipe
-- [ ] Vercel GitHub App + `TYPESAFE_API_KEY` / `JEV_MODEL` env
-- [ ] Commit + push to trigger deploy (once App connected)
+- [x] Commit + push (`75abdd7` on `main`)
+- [ ] Vercel GitHub App + env on the account that owns shapeshiftui.vercel.app (not visible via current MCP)
 
 ## Backlog
 

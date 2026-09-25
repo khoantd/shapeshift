@@ -27,13 +27,12 @@ Ship decision cards + RTCFC polish + personal cards (workout, EMI, recipe); conn
 
 ## In progress
 
-- Vercel GitHub App install + project env (`TYPESAFE_API_KEY`, `JEV_MODEL`)
-- **Blockers:** GitHub App may still need manual install for push deploys
+- _(none)_
 
 ## Next
 
-1. Install [Vercel GitHub App](https://github.com/apps/vercel) and connect `khoantd/shapeshift` (if not already)
-2. Confirm `TYPESAFE_API_KEY` / `JEV_MODEL` on Vercel project
+1. Connect Vercel: install [Vercel GitHub App](https://github.com/apps/vercel) on `khoantd/shapeshift` (project not visible on current Vercel MCP account — use the account that owns shapeshiftui.vercel.app)
+2. Add `TYPESAFE_API_KEY` / `JEV_MODEL=jev-1.13.0` in that Vercel project env (Production + Preview)
 3. Deferred: response-model selection (needs multi-model invoke)
 
 ## Decisions
