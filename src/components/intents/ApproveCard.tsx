@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Pause, Play } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ToolApproval } from "@/lib/jev/types";
 import type { ApproveData } from "@/lib/parse/approve";
 import { DecisionShell, EvidenceBlock } from "./DecisionShell";
-import { Chip, Missing } from "./shared";
+import { Missing } from "./shared";
 import type { CardProps } from "./types";
 
 const LABEL: Record<Exclude<ToolApproval, "unspecified">, string> = {
@@ -23,30 +22,25 @@ export function ApproveCard({ data, signals, interactive }: CardProps<ApproveDat
   return (
     <DecisionShell
       suggestion={
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-1.5">
-            {data.tool ? (
-              <h2 className="font-mono text-[17px] leading-6 font-[550] text-pretty break-all">{data.tool}</h2>
-            ) : (
-              <Missing>Add a tool name</Missing>
-            )}
-            <Select value={decision} onValueChange={(v) => setPicked(v as "allow" | "pause")} disabled={!interactive}>
-              <SelectTrigger
-                size="sm"
-                className="h-7 w-fit gap-1 rounded-full border-none bg-secondary px-2.5 text-[13px] font-medium text-ink-2 shadow-none"
-                aria-label="Tool approval"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="allow">{LABEL.allow}</SelectItem>
-                <SelectItem value="pause">{LABEL.pause}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Chip icon={paused ? Pause : Play} className={paused ? "bg-caution/8 text-caution-text" : "text-positive"}>
-            {paused ? "Paused" : "Allow"}
-          </Chip>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          {data.tool ? (
+            <h2 className="font-mono text-[17px] leading-6 font-[550] text-pretty break-all">{data.tool}</h2>
+          ) : (
+            <Missing>Add a tool name</Missing>
+          )}
+          <Select value={decision} onValueChange={(v) => setPicked(v as "allow" | "pause")} disabled={!interactive}>
+            <SelectTrigger
+              size="sm"
+              className="h-7 w-fit gap-1 rounded-full border-none bg-secondary px-2.5 text-[13px] font-medium text-ink-2 shadow-none"
+              aria-label="Tool approval"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="allow">{LABEL.allow}</SelectItem>
+              <SelectItem value="pause">{LABEL.pause}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       }
       meta={data.rationale || (paused ? "UI-only gate — no tool will run" : "UI-only gate — recorded as allowed")}

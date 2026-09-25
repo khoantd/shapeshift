@@ -1,10 +1,9 @@
 "use client";
 
-import { Check, RotateCcw } from "lucide-react";
 import type { EvalData } from "@/lib/parse/eval";
 import { qualityLabel } from "@/lib/parse/priority";
 import { DecisionShell, EvidenceBlock } from "./DecisionShell";
-import { Chip, HeroNumber, Missing } from "./shared";
+import { HeroNumber, Missing } from "./shared";
 import type { CardProps } from "./types";
 
 export function EvalCard({ data, signals }: CardProps<EvalData>) {
@@ -16,12 +15,7 @@ export function EvalCard({ data, signals }: CardProps<EvalData>) {
     <DecisionShell
       suggestion={
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <h2 className="text-[17px] leading-6 font-[550]">Response evaluation</h2>
-            <Chip icon={revise ? RotateCcw : Check} className={revise ? "bg-caution/8 text-caution-text" : "text-positive"}>
-              {revise ? "Request revision" : "Pass"}
-            </Chip>
-          </div>
+          <h2 className="text-[17px] leading-6 font-[550]">{revise ? "Request revision" : "Pass"}</h2>
           <HeroNumber className="text-[22px]">{label}</HeroNumber>
         </div>
       }

@@ -34,7 +34,7 @@ export function EvidenceBlock({ label, children }: { label?: string; children: R
   return (
     <div className="flex flex-col gap-1">
       {label ? <span className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">{label}</span> : null}
-      <p className="line-clamp-4 text-pretty break-words whitespace-pre-wrap">{children}</p>
+      <div className="line-clamp-6 text-pretty break-words whitespace-pre-wrap">{children}</div>
     </div>
   );
 }

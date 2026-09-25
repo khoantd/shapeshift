@@ -20,6 +20,7 @@ import {
   ListChecks,
   MessageSquareQuote,
   Layers,
+  Pause,
   Palette,
   Repeat,
   Ruler,
@@ -360,7 +361,7 @@ export const registry: Registry = {
     signals: ["toolApproval"],
     badges: (s) =>
       s.toolApproval === "pause"
-        ? [{ id: "pause", label: "Paused", icon: CircleAlert, tone: "caution" }]
+        ? [{ id: "pause", label: "Paused", icon: Pause, tone: "caution" }]
         : s.toolApproval === "allow"
           ? [{ id: "allow", label: "Allow", icon: ShieldCheck }]
           : [],

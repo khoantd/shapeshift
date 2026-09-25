@@ -1,9 +1,8 @@
 "use client";
 
-import { Flag, ShieldCheck } from "lucide-react";
 import type { ModerateData } from "@/lib/parse/moderate";
 import { DecisionShell, EvidenceBlock } from "./DecisionShell";
-import { Chip, Missing } from "./shared";
+import { Missing } from "./shared";
 import type { CardProps } from "./types";
 
 export function ModerateCard({ data, signals }: CardProps<ModerateData>) {
@@ -12,12 +11,7 @@ export function ModerateCard({ data, signals }: CardProps<ModerateData>) {
   return (
     <DecisionShell
       suggestion={
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-[17px] leading-6 font-[550]">{flagged ? "Flag for moderator" : "Looks clear"}</h2>
-          <Chip icon={flagged ? Flag : ShieldCheck} className={flagged ? "bg-caution/8 text-caution-text" : undefined}>
-            {flagged ? "Flagged" : "Clear"}
-          </Chip>
-        </div>
+        <h2 className="text-[17px] leading-6 font-[550]">{flagged ? "Flag for moderator" : "Looks clear"}</h2>
       }
       meta={data.policy ? `Policy: ${data.policy}` : "Based on content and policy criteria"}
       evidence={
