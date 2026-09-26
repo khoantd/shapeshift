@@ -5,7 +5,7 @@
 <p align="center">
   <img src="docs/demo.gif" alt="Typing 'dinner with priya friday 8pm on zoom' morphs the text box into an event card, then a shopping checklist" width="820">
   <br>
-  <sub><a href="https://shapeshiftui.vercel.app"><b>Try it live</b></a> · <a href="docs/demo.mp4">Watch the full 60-second demo (1080p60)</a></sub>
+  <sub><a href="https://shapeshiftui.vercel.app"><b>Join the waitlist</b></a> · <a href="https://shapeshiftui.vercel.app/demo"><b>Try the demo</b></a> · <a href="docs/demo.mp4">Watch the full 60-second demo (1080p60)</a></sub>
 </p>
 
 ```
@@ -30,12 +30,31 @@ bun install
 bun dev
 ```
 
-Open http://localhost:3000 and start typing. Press <kbd>/</kbd> to see every card type.
+Open http://localhost:3000 for the waitlist landing, or http://localhost:3000/demo to start typing. Press <kbd>/</kbd> to see every card type.
+
+### Waitlist (Convex)
+
+The landing page at `/` stores emails via [Convex](https://convex.dev). From `apps/web`:
+
+```bash
+bunx convex dev
+# paste NEXT_PUBLIC_CONVEX_URL into apps/web/.env.local
+```
+
+Without Convex configured, the form still renders and shows a clear error on submit.
+
+This repo is a **Bun monorepo**:
+
+| Path | Package | Role |
+| --- | --- | --- |
+| `apps/web` | `@shapeshift/web` | Next.js demo host |
+| `packages/core` | `@shapeshift/core` | Intent engine (decide, signals, parsers, Jev types/mock) |
+| `packages/react` | `@shapeshift/react` | Drop-in `<Shapeshift />`, cards, hooks, styles |
 
 ### Use the online Jev model (optional)
 
 ```bash
-cp .env.example .env.local
+cp .env.example apps/web/.env.local
 # then set TYPESAFE_API_KEY=... (get one at https://console.typesafe.ai/keys)
 ```
 
@@ -47,6 +66,41 @@ Restart `bun dev`. The latency readout in the bottom-right corner switches from 
 | `JEV_MODEL` | `jev-1.13.0` | Pinned model version. |
 | `NEXT_PUBLIC_USE_MOCK` | `false` | `true` forces offline even with a key. |
 | `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | Used for Open Graph metadata. |
+| `NEXT_PUBLIC_CONVEX_URL` | _(empty)_ | Convex deployment URL for waitlist signup on `/`. |
+
+### Use in another workspace app
+
+```tsx
+// apps/my-app — depend on workspace:* packages
+import { mockClassifyAsync } from "@shapeshift/core";
+import { createFetchClassify, Shapeshift } from "@shapeshift/react";
+import "@shapeshift/react/styles.css";
+
+const classify =
+  process.env.NEXT_PUBLIC_USE_MOCK === "true"
+    ? mockClassifyAsync
+    : createFetchClassify("/api/intent");
+
+export default function Page() {
+  return <Shapeshift classify={classify} />;
+}
+```
+
+API route (Next.js App Router):
+
+```ts
+import { createIntentHandler } from "@shapeshift/core/server";
+export const runtime = "nodejs";
+export const POST = createIntentHandler({
+  forceOffline: process.env.NEXT_PUBLIC_USE_MOCK === "true",
+});
+```
+
+In your CSS entry: `@import "tailwindcss";` then `@import "@shapeshift/react/styles.css";` and `@source` the react package so utilities are generated.
+
+Omit `classify` to run fully offline with the built-in mock. Swap persistence with `savedItems.setStorage(memoryStorage)` when embedding without localStorage.
+
+**Deploy:** set the Vercel project Root Directory to `apps/web`.
 
 ## Card types
 
@@ -110,20 +164,21 @@ The diagrams are Excalidraw files — open any `docs/diagrams/*.excalidraw` at [
 
 | Path | What lives there |
 | --- | --- |
-| `src/components/intents/registry.ts` | **The extension point.** One entry per card type. |
-| `src/lib/jev/questions.ts` | The Jev question schema |
-| `src/lib/jev/mock.ts` | Offline keyword classifier (same output shape) |
-| `src/lib/parse/` | One deterministic parser per card type |
-| `src/lib/decide.ts`, `src/lib/signals.ts` | The calm-UI state machine |
-| `src/components/shapeshift/` | Shell, chips, palette, saved list, HUD |
+| `packages/react/src/intents/registry.ts` | **The extension point.** One entry per card type. |
+| `packages/core/src/jev/questions.ts` | The Jev question schema |
+| `packages/core/src/jev/mock.ts` | Offline keyword classifier (same output shape) |
+| `packages/core/src/parse/` | One deterministic parser per card type |
+| `packages/core/src/decide.ts`, `signals.ts` | The calm-UI state machine |
+| `packages/react/src/shapeshift/` | Shell, chips, palette, saved list, HUD |
+| `packages/core/src/server.ts` | `createIntentHandler()` for host API routes |
 
 ### Adding a card type
 
-1. Add the key to `INTENT_KEYS` in `src/lib/jev/types.ts`.
-2. Add a non-overlapping criterion to `intent` in `src/lib/jev/questions.ts`.
-3. Write a parser in `src/lib/parse/` and register it in `src/lib/parse/index.ts`.
-4. Write a card component in `src/components/intents/` and add a registry entry.
-5. Teach the offline classifier in `src/lib/jev/mock.ts`, and add tests.
+1. Add the key to `INTENT_KEYS` in `packages/core/src/jev/types.ts`.
+2. Add a non-overlapping criterion to `intent` in `packages/core/src/jev/questions.ts`.
+3. Write a parser in `packages/core/src/parse/` and register it in `packages/core/src/parse/index.ts`.
+4. Write a card component in `packages/react/src/intents/` and add a registry entry.
+5. Teach the offline classifier in `packages/core/src/jev/mock.ts`, and add tests.
 
 TypeScript will point at anything you missed.
 

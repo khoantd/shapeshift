@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Shapeshift",
+    "output": "shapeshift.architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "views": [
+      {
+        "id": "intent-morph",
+        "label": "Intent morphing",
+        "focus": ["user", "web", "react-sdk", "core", "intent-api", "jev"],
+        "note": "Typed input morphs into intent cards via decide/signals; host injects classify through /api/intent to TypeSafe AI Jev (or offline mock)."
+      },
+      {
+        "id": "news-briefing",
+        "label": "News briefing",
+        "focus": ["user", "web", "news-bff", "ic-supabase", "jev", "perplexity"],
+        "note": "CXO feed from Inspired Canvas; Jev scores briefs; on-demand Deep Dive via Perplexity Agent API."
+      },
+      {
+        "id": "waitlist",
+        "label": "Waitlist landing",
+        "focus": ["user", "web", "convex"],
+        "note": "Public / landing joins waitlist through Convex; demo lives at /demo."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "User",
+      "sublabel": "Browser",
+      "pos": [40, 200],
+      "size": [100, 50]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "apps/web",
+      "sublabel": "Next.js 16",
+      "tag": "/ · /demo · /news",
+      "pos": [200, 190],
+      "size": [140, 70]
+    },
+    {
+      "id": "react-sdk",
+      "type": "frontend",
+      "label": "@shapeshift/react",
+      "sublabel": "Shell + cards",
+      "pos": [400, 80],
+      "size": [150, 56]
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "@shapeshift/core",
+      "sublabel": "decide · parse · jev",
+      "pos": [400, 200],
+      "size": [150, 56]
+    },
+    {
+      "id": "intent-api",
+      "type": "backend",
+      "label": "/api/intent",
+      "sublabel": "createIntentHandler",
+      "pos": [620, 80],
+      "size": [140, 56]
+    },
+    {
+      "id": "news-bff",
+      "type": "backend",
+      "label": "/api/news*",
+      "sublabel": "feed · brief · deep-dive",
+      "pos": [620, 280],
+      "size": [150, 56]
+    },
+    {
+      "id": "convex",
+      "type": "database",
+      "label": "Convex",
+      "sublabel": "waitlist",
+      "pos": [210, 360],
+      "size": [120, 50]
+    },
+    {
+      "id": "jev",
+      "type": "cloud",
+      "label": "TypeSafe AI Jev",
+      "sublabel": "Intent classify",
+      "pos": [840, 80],
+      "size": [140, 56]
+    },
+    {
+      "id": "ic-supabase",
+      "type": "database",
+      "label": "Inspired Canvas",
+      "sublabel": "Supabase CXO feed",
+      "pos": [840, 250],
+      "size": [150, 56]
+    },
+    {
+      "id": "perplexity",
+      "type": "cloud",
+      "label": "Perplexity",
+      "sublabel": "Agent Deep Dive",
+      "pos": [840, 370],
+      "size": [140, 56]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Bun monorepo packages",
+      "wraps": ["react-sdk", "core"]
+    },
+    {
+      "kind": "region",
+      "label": "Next.js BFF routes",
+      "wraps": ["intent-api", "news-bff"]
+    },
+    {
+      "kind": "security-group",
+      "label": "External services",
+      "wraps": ["jev", "ic-supabase", "perplexity", "convex"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-to-web",
+      "from": "user",
+      "to": "web",
+      "label": "HTTP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "web-to-react",
+      "from": "web",
+      "to": "react-sdk",
+      "label": "Shapeshift shell",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "react-to-core",
+      "from": "react-sdk",
+      "to": "core",
+      "label": "decide / parse",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [545, 150]
+    },
+    {
+      "id": "core-to-intent",
+      "from": "core",
+      "to": "intent-api",
+      "label": "server handler",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "intent-to-jev",
+      "from": "intent-api",
+      "to": "jev",
+      "label": "classify",
+      "variant": "emphasis"
+    },
+    {
+      "id": "web-to-news",
+      "from": "web",
+      "to": "news-bff",
+      "label": "CXO briefing",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "labelDy": 24
+    },
+    {
+      "id": "news-to-ic",
+      "from": "news-bff",
+      "to": "ic-supabase",
+      "label": "JWT feed R/W",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDy": -18
+    },
+    {
+      "id": "news-to-jev",
+      "from": "news-bff",
+      "to": "jev",
+      "label": "brief scores",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "news-to-perplexity",
+      "from": "news-bff",
+      "to": "perplexity",
+      "label": "deep dive",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "web-to-convex",
+      "from": "web",
+      "to": "convex",
+      "label": "joinWaitlist",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [263, 300]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Intent SDK",
+      "items": [
+        "Jev decides; host injects classify (mock when offline)",
+        "Calm UI via decide + gated signals in @shapeshift/core",
+        "Cards register in @shapeshift/react intents/registry"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "News surface",
+      "items": [
+        "Inspired Canvas ba_cxo_feed_* only (not Tavily)",
+        "Brief = urgency / relevance / tone; Deep Dive = Perplexity preset low",
+        "Stats tab aggregates briefs + demo intent morph stats"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Host boundaries",
+      "items": [
+        "Vercel Root Directory = apps/web",
+        "Secrets stay in apps/web env; packages never read Next env",
+        "Convex waitlist only — no Convex Auth"
+      ]
+    }
+  ]
+}

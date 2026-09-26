@@ -1,0 +1,18 @@
+@import "tailwindcss";
+@import "@shapeshift/react/styles.css";
+
+/* Scan package components so Tailwind emits their utilities. */
+@source "../../../../packages/react/src";
+
+/* Landing nav link underline (waitlist). */
+.nav-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0 1px;
+  transition: background-size 150ms ease-out;
+}
+.nav-underline:hover,
+.nav-underline:focus-visible {
+  background-size: 100% 1px;
+}

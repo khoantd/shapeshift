@@ -1,0 +1,40 @@
+{
+  "name": "@shapeshift/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy"
+  },
+  "dependencies": {
+    "@perplexity-ai/perplexity_ai": "^0.38.6",
+    "@shapeshift/core": "workspace:*",
+    "@shapeshift/react": "workspace:*",
+    "@supabase/supabase-js": "^2.117.2",
+    "@typesafe-ai/sdk": "^0.6.0",
+    "convex": "^1.30.0",
+    "geist": "^1.7.2",
+    "lucide-react": "^1.47.0",
+    "motion": "^13.4.0",
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "sonner": "^2.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
