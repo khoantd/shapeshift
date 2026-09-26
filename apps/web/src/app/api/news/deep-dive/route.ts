@@ -8,6 +8,7 @@ import {
 import {
   DeepDiveConfigError,
   DeepDiveUpstreamError,
+  deepDiveSourcesIncomplete,
   parseDeepDiveRequest,
   runNewsDeepDive,
 } from "@/lib/perplexity/deepDive";
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
     if (itemId && accessToken && !input.force) {
       try {
         const stored = await getCxoFeedItemDeepDive({ accessToken, id: itemId });
-        if (stored?.text) {
+        if (stored?.text && !deepDiveSourcesIncomplete(stored.text, stored.sources)) {
           return Response.json({
             success: true,
             text: stored.text,

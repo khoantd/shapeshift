@@ -36,6 +36,7 @@ import {
   aggregateNewsBriefStats,
   briefScore,
 } from "@/lib/newsStats";
+import { deepDiveSourcesIncomplete } from "@/lib/perplexity/deepDiveParse";
 
 type FeedResponse = {
   success: boolean;
@@ -60,9 +61,10 @@ type DeepDiveApiResponse = {
 function deepDiveFromItem(item: NewsFeedItem): NewsDeepDiveView | null {
   const dd = item.deepDive;
   if (!dd?.text?.trim()) return null;
+  const sources = Array.isArray(dd.sources) ? dd.sources : [];
   return {
     text: dd.text.trim(),
-    sources: Array.isArray(dd.sources) ? dd.sources : [],
+    sources,
   };
 }
 
@@ -89,6 +91,8 @@ function seedDeepDiveCache(
     if (next[item.id]) continue;
     const view = deepDiveFromItem(item);
     if (!view) continue;
+    // Skip incomplete extracts — reader will force-refresh to recover sources.
+    if (deepDiveSourcesIncomplete(view.text, view.sources)) continue;
     if (!changed) {
       next = { ...prev };
       changed = true;
@@ -241,6 +245,8 @@ export function NewsPageClient({
   const deepDiveAbortRef = useRef<AbortController | null>(null);
   const deepDiveCacheRef = useRef(deepDiveCache);
   deepDiveCacheRef.current = deepDiveCache;
+  /** Story ids we already tried to recover sources for (avoid regen loops). */
+  const deepDiveHealAttemptedRef = useRef(new Set<string>());
 
   const [slashDraft, setSlashDraft] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -790,6 +796,18 @@ export function NewsPageClient({
     },
     [readerItem],
   );
+
+  // Auto-heal deep dives that were persisted with cite marks but empty sources.
+  useEffect(() => {
+    if (!readerItem) return;
+    const storyId = readerItem.id;
+    const view = deepDiveCache[storyId] ?? deepDiveFromItem(readerItem);
+    if (!view || !deepDiveSourcesIncomplete(view.text, view.sources)) return;
+    if (deepDiveLoadingId === storyId) return;
+    if (deepDiveHealAttemptedRef.current.has(storyId)) return;
+    deepDiveHealAttemptedRef.current.add(storyId);
+    generateDeepDive({ force: true });
+  }, [readerItem, deepDiveCache, deepDiveLoadingId, generateDeepDive]);
 
   const reading = readerShellOpen && view === "feed";
   const showStats = view === "stats";

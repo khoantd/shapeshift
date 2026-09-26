@@ -28,6 +28,13 @@ describe("encodeWebCitations", () => {
     const out = encodeWebCitations("[web:1] then [web:3][web:2]");
     expect(out).toBe(`[sources](${CITE_PROTOCOL}1) then [sources](${CITE_PROTOCOL}3,2)`);
   });
+
+  test("encodes [web:0] and [page:N] (Perplexity low preset)", () => {
+    expect(encodeWebCitations("See [web:0].")).toBe(`See [sources](${CITE_PROTOCOL}0).`);
+    expect(encodeWebCitations("From page [page:1][page:0].")).toBe(
+      `From page [sources](${CITE_PROTOCOL}1,0).`,
+    );
+  });
 });
 
 describe("parseCiteHref", () => {
@@ -40,8 +47,8 @@ describe("parseCiteHref", () => {
     expect(parseCiteHref(undefined)).toBeNull();
   });
 
-  test("drops invalid indices", () => {
-    expect(parseCiteHref(`${CITE_PROTOCOL}0,2,abc,-1`)).toEqual([2]);
+  test("keeps 0-based indices and drops invalid", () => {
+    expect(parseCiteHref(`${CITE_PROTOCOL}0,2,abc,-1`)).toEqual([0, 2]);
   });
 });
 
@@ -52,7 +59,7 @@ describe("resolveCiteSources", () => {
     { title: "A again", url: "https://a.example/1" },
   ];
 
-  test("resolves 1-based indices in citation order", () => {
+  test("resolves 1-based indices in citation order when sources lack ids", () => {
     expect(resolveCiteSources([2, 1], sources)).toEqual([
       { title: "B", url: "https://b.example/2" },
       { title: "A", url: "https://a.example/1" },
@@ -63,6 +70,19 @@ describe("resolveCiteSources", () => {
     // 1 and 3 share the same url; 9 is out of range; duplicate 1 ignored
     expect(resolveCiteSources([1, 9, 1, 3], sources)).toEqual([
       { title: "A", url: "https://a.example/1" },
+    ]);
+  });
+
+  test("resolves by explicit search-result id including 0", () => {
+    const withIds = [
+      { id: 0, title: "Zero", url: "https://z.example/0" },
+      { id: 3, title: "Three", url: "https://t.example/3" },
+      { id: 6, title: "Six", url: "https://s.example/6" },
+    ];
+    expect(resolveCiteSources([0, 6, 3], withIds)).toEqual([
+      { id: 0, title: "Zero", url: "https://z.example/0" },
+      { id: 6, title: "Six", url: "https://s.example/6" },
+      { id: 3, title: "Three", url: "https://t.example/3" },
     ]);
   });
 });

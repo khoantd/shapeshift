@@ -19,7 +19,7 @@ export type NewsFeedItem = {
   thumbnailUrl?: string | null;
   deepDive?: {
     text: string;
-    sources: Array<{ title: string; url: string }>;
+    sources: Array<{ title: string; url: string; id?: number }>;
   } | null;
   brief?: {
     urgency: number;

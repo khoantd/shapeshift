@@ -33,6 +33,8 @@ export type NewsBriefView = {
 export type NewsDeepDiveSource = {
   title: string;
   url: string;
+  /** Perplexity search/page result id for `[web:N]` / `[page:N]`. */
+  id?: number;
 };
 
 export type NewsDeepDiveView = {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildDeepDivePrompt,
   deepDiveCacheKey,
+  deepDiveSourcesIncomplete,
   detectDeepDiveLanguage,
   extractDeepDiveSources,
   parseDeepDiveRequest,
@@ -74,7 +75,9 @@ describe("extractDeepDiveSources", () => {
       "https://b.example/2",
       "https://c.example/3",
     ]);
-    expect(sources[0]?.title).toBe("A");
+    expect(sources[0]).toEqual({ id: 1, title: "A", url: "https://a.example/1" });
+    expect(sources[1]).toEqual({ id: 2, title: "B", url: "https://b.example/2" });
+    expect(sources[2]).toEqual({ title: "C", url: "https://c.example/3" });
   });
 
   test("skips non-http urls", () => {
@@ -88,6 +91,53 @@ describe("extractDeepDiveSources", () => {
         ],
       }),
     ).toEqual([]);
+  });
+
+  test("preserves search result ids for [web:N] resolution", () => {
+    const sources = extractDeepDiveSources({
+      output: [
+        {
+          type: "search_results",
+          results: [
+            { id: 0, title: "Zero", url: "https://z.example/0", snippet: "" },
+            { id: 3, title: "Three", url: "https://t.example/3", snippet: "" },
+          ],
+        },
+      ],
+    });
+    expect(sources).toEqual([
+      { id: 0, title: "Zero", url: "https://z.example/0" },
+      { id: 3, title: "Three", url: "https://t.example/3" },
+    ]);
+  });
+
+  test("extracts fetch_url_results contents with positional page ids", () => {
+    const sources = extractDeepDiveSources({
+      output: [
+        {
+          type: "fetch_url_results",
+          contents: [
+            { title: "Page A", url: "https://a.example/p", snippet: "…" },
+            { title: "Page B", url: "https://b.example/p", snippet: "…" },
+          ],
+        },
+      ],
+    });
+    expect(sources).toEqual([
+      { id: 0, title: "Page A", url: "https://a.example/p" },
+      { id: 1, title: "Page B", url: "https://b.example/p" },
+    ]);
+  });
+});
+
+describe("deepDiveSourcesIncomplete", () => {
+  test("true when text has cite marks but sources empty", () => {
+    expect(deepDiveSourcesIncomplete("Claim [web:0].", [])).toBe(true);
+    expect(deepDiveSourcesIncomplete("Claim [page:1].", [])).toBe(true);
+    expect(deepDiveSourcesIncomplete("Claim [web:0].", [{ title: "A", url: "https://a.test" }])).toBe(
+      false,
+    );
+    expect(deepDiveSourcesIncomplete("No cites.", [])).toBe(false);
   });
 });
 

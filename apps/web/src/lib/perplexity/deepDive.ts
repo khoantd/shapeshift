@@ -10,6 +10,7 @@ import { LRU } from "@shapeshift/core";
 import {
   buildDeepDivePrompt,
   deepDiveCacheKey,
+  deepDiveSourcesIncomplete,
   extractDeepDiveSources,
   type DeepDiveRequest,
   type DeepDiveSource,
@@ -19,6 +20,7 @@ export type { DeepDiveRequest, DeepDiveSource } from "./deepDiveParse";
 export {
   buildDeepDivePrompt,
   deepDiveCacheKey,
+  deepDiveSourcesIncomplete,
   detectDeepDiveLanguage,
   extractDeepDiveSources,
   parseDeepDiveRequest,
@@ -98,14 +100,33 @@ export async function runNewsDeepDive(
     throw new DeepDiveUpstreamError("Perplexity returned an empty deep dive.", 502);
   }
 
+  const sources = extractDeepDiveSources(response);
+  if (deepDiveSourcesIncomplete(text, sources)) {
+    const types = Array.isArray(response.output)
+      ? response.output
+          .map((item) =>
+            item && typeof item === "object" && "type" in item
+              ? String((item as { type?: unknown }).type)
+              : typeof item,
+          )
+          .join(",")
+      : "(no output array)";
+    console.warn(
+      `[news-deep-dive] cite marks present but sources empty; output types=[${types}]`,
+    );
+  }
+
   const result: DeepDiveResult = {
     text,
-    sources: extractDeepDiveSources(response),
+    sources,
     responseId: typeof response.id === "string" ? response.id : null,
     model: typeof response.model === "string" ? response.model : null,
     cached: false,
   };
-  cache.set(key, { ...result, cached: false });
+  // Do not LRU-cache incomplete extractions — next request can retry.
+  if (!deepDiveSourcesIncomplete(text, sources)) {
+    cache.set(key, { ...result, cached: false });
+  }
   return result;
 }
 

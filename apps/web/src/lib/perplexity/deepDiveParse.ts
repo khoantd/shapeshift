@@ -1,6 +1,8 @@
 export type DeepDiveSource = {
   title: string;
   url: string;
+  /** Perplexity search/page result id for `[web:N]` / `[page:N]` resolution. */
+  id?: number;
 };
 
 export type DeepDiveRequest = {
@@ -79,24 +81,91 @@ export function extractDeepDiveSources(response: {
 }): DeepDiveSource[] {
   const byUrl = new Map<string, DeepDiveSource>();
 
-  const add = (title: string | undefined, url: string | undefined) => {
+  const add = (
+    title: string | undefined,
+    url: string | undefined,
+    id?: number,
+  ) => {
     const href = url?.trim();
     if (!href || !/^https?:\/\//i.test(href)) return;
-    if (byUrl.has(href)) return;
-    byUrl.set(href, { title: (title?.trim() || href).slice(0, 300), url: href });
+    const existing = byUrl.get(href);
+    if (existing) {
+      // Prefer keeping an explicit id if a later duplicate lacked one.
+      if (existing.id == null && typeof id === "number" && Number.isInteger(id)) {
+        byUrl.set(href, { ...existing, id });
+      }
+      return;
+    }
+    byUrl.set(href, {
+      title: (title?.trim() || href).slice(0, 300),
+      url: href,
+      ...(typeof id === "number" && Number.isInteger(id) ? { id } : {}),
+    });
   };
 
-  const output = Array.isArray(response.output) ? response.output : [];
+  const coerceId = (raw: unknown): number | undefined => {
+    if (typeof raw === "number" && Number.isInteger(raw) && raw >= 0) return raw;
+    if (typeof raw === "string" && /^\d+$/.test(raw.trim())) {
+      return Number.parseInt(raw.trim(), 10);
+    }
+    return undefined;
+  };
+
+  // SDK responses are plain objects; also accept JSON-stringified clones.
+  let output: unknown[] = [];
+  if (Array.isArray(response.output)) {
+    output = response.output;
+  } else if (response.output && typeof response.output === "object") {
+    // Rare: iterable / array-like
+    try {
+      output = [...(response.output as Iterable<unknown>)];
+    } catch {
+      output = [];
+    }
+  }
+
   for (const item of output) {
     if (!item || typeof item !== "object") continue;
     const row = item as Record<string, unknown>;
+
     if (row.type === "search_results" && Array.isArray(row.results)) {
       for (const r of row.results) {
         if (!r || typeof r !== "object") continue;
         const sr = r as Record<string, unknown>;
-        add(typeof sr.title === "string" ? sr.title : undefined, typeof sr.url === "string" ? sr.url : undefined);
+        add(
+          typeof sr.title === "string" ? sr.title : undefined,
+          typeof sr.url === "string" ? sr.url : undefined,
+          coerceId(sr.id),
+        );
       }
     }
+
+    if (row.type === "fetch_url_results" && Array.isArray(row.contents)) {
+      row.contents.forEach((c, index) => {
+        if (!c || typeof c !== "object") return;
+        const content = c as Record<string, unknown>;
+        add(
+          typeof content.title === "string" ? content.title : undefined,
+          typeof content.url === "string" ? content.url : undefined,
+          coerceId(content.id) ?? index,
+        );
+      });
+    }
+
+    // Some payloads nest results without a typed wrapper — accept any results[] with urls.
+    if (row.type !== "search_results" && Array.isArray(row.results)) {
+      for (const r of row.results) {
+        if (!r || typeof r !== "object") continue;
+        const sr = r as Record<string, unknown>;
+        if (typeof sr.url !== "string") continue;
+        add(
+          typeof sr.title === "string" ? sr.title : undefined,
+          sr.url,
+          coerceId(sr.id),
+        );
+      }
+    }
+
     if (row.type === "message" && Array.isArray(row.content)) {
       for (const part of row.content) {
         if (!part || typeof part !== "object") continue;
@@ -105,13 +174,28 @@ export function extractDeepDiveSources(response: {
         for (const ann of p.annotations) {
           if (!ann || typeof ann !== "object") continue;
           const a = ann as Record<string, unknown>;
-          add(typeof a.title === "string" ? a.title : undefined, typeof a.url === "string" ? a.url : undefined);
+          add(
+            typeof a.title === "string" ? a.title : undefined,
+            typeof a.url === "string" ? a.url : undefined,
+            coerceId(a.id),
+          );
         }
       }
     }
   }
 
   return [...byUrl.values()];
+}
+
+const CITE_MARK_RE = /\[(?:web|page):\d+\]/;
+
+/** True when the model emitted cite marks but we have no resolvable sources. */
+export function deepDiveSourcesIncomplete(
+  text: string,
+  sources: readonly DeepDiveSource[],
+): boolean {
+  if (sources.length > 0) return false;
+  return CITE_MARK_RE.test(text);
 }
 
 export function buildDeepDivePrompt(input: DeepDiveRequest): string {

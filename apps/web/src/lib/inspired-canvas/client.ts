@@ -25,7 +25,7 @@ export type CxoFeedBrief = {
 
 export type CxoFeedDeepDive = {
   text: string;
-  sources: Array<{ title: string; url: string }>;
+  sources: Array<{ title: string; url: string; id?: number }>;
   model?: string | null;
   responseId?: string | null;
   generatedAt?: string | null;
@@ -113,9 +113,13 @@ function parseDeepDivePayload(raw: unknown): CxoFeedDeepDive | null {
       if (!url || !/^https?:\/\//i.test(url)) return null;
       const title =
         typeof src.title === "string" && src.title.trim() ? src.title.trim().slice(0, 300) : url;
-      return { title, url };
+      const id =
+        typeof src.id === "number" && Number.isInteger(src.id) && src.id >= 0
+          ? src.id
+          : undefined;
+      return id != null ? { title, url, id } : { title, url };
     })
-    .filter((s): s is { title: string; url: string } => s != null);
+    .filter((s): s is { title: string; url: string; id?: number } => s != null);
   return {
     text,
     sources,

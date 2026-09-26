@@ -6,7 +6,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Updated** | 2026-09-26 |
+| **Updated** | 2026-09-27 |
 | **Phase** | build |
 | **Tool** | cursor |
 | **Persona** | _(optional)_ |
@@ -17,6 +17,7 @@ Waitlist landing at `/` (Convex) + live demo at `/demo`; prior news/IC work rema
 
 ## Done
 
+- **Deep Dive citation sources fix** — empty `sources` left raw `[web:N]` in prod; harden `extractDeepDiveSources` (ids + `fetch_url_results`); 0-based/`id` resolve in `webCitations`; skip incomplete DB/LRU cache; client auto-heals once with force regenerate
 - **Waitlist hydration fix** — `MotionConfig reducedMotion="user"` + stable fadeUp (no `useReducedMotion` SSR branch); `SignupForm` uses `useId()`; count `toLocaleString("en-US")`
 - **`/news` Stats tab** — Feed|Stats (`?view=stats`); KPIs, tone mix, top ranked from Jev briefs; Score unscored (≤10, concurrency 2); intent morphing section from demo localStorage ring
 - **Waitlist landing** — Aver-inspired page at `/` (`WaitlistLanding`, `SignupForm`, `ProductPreview`); Shapeshift copy + existing brand tokens; `motion/react` + reduced-motion
@@ -50,12 +51,13 @@ Waitlist landing at `/` (Convex) + live demo at `/demo`; prior news/IC work rema
 
 ## Next
 
-1. From `apps/web`: `bunx convex dev` → set `NEXT_PUBLIC_CONVEX_URL` in `.env.local` → smoke-test waitlist join
-2. Add `NEXT_PUBLIC_CONVEX_URL` on Vercel; Root Directory = `apps/web`
-3. Apply IC migrations in Supabase SQL Editor: `20260926120000_cxo_feed_deep_dive.sql` + `20260926130000_cxo_feed_brief.sql`
-4. Set `PERPLEXITY_API_KEY` in `apps/web/.env` and smoke-test Generate Deep Dive (confirm `persisted: true`)
-5. Optional: IC Supabase Auth UI instead of env JWT / password mint
-6. Smoke-test `/news?view=stats` + Score unscored; use `/demo` then Stats for intent section
+1. Deploy citation-sources fix to Vercel; open Graphify deep dive — should auto-regen sources once (or click Regenerate)
+2. From `apps/web`: `bunx convex dev` → set `NEXT_PUBLIC_CONVEX_URL` in `.env.local` → smoke-test waitlist join
+3. Add `NEXT_PUBLIC_CONVEX_URL` on Vercel; Root Directory = `apps/web`
+4. Apply IC migrations in Supabase SQL Editor: `20260926120000_cxo_feed_deep_dive.sql` + `20260926130000_cxo_feed_brief.sql`
+5. Set `PERPLEXITY_API_KEY` in `apps/web/.env` and smoke-test Generate Deep Dive (confirm `persisted: true` + non-empty `sources`)
+6. Optional: IC Supabase Auth UI instead of env JWT / password mint
+7. Smoke-test `/news?view=stats` + Score unscored; use `/demo` then Stats for intent section
 
 ## Decisions
 
@@ -92,6 +94,7 @@ Waitlist landing at `/` (Convex) + live demo at `/demo`; prior news/IC work rema
 - Brief fetch: do not `setState` synchronously in `useEffect` — yield with `await Promise.resolve()` then set loading; use `briefCacheRef` so cache hits skip refetch without dep thrash
 - Deep Dive needs `PERPLEXITY_API_KEY`; without it the BFF returns 503 with setup message (never log the key)
 - Deep Dive persist: apply IC migration `20260926120000_cxo_feed_deep_dive.sql` (column `ba_cxo_feed_items.deep_dive` jsonb) before store works; Regenerate uses `force: true`
+- Deep Dive sources: UI hides Sources + leaves raw `[web:N]` when `sources=[]`; incomplete rows (cites, no sources) are not served from DB/LRU cache and auto-heal once on reader open
 - Reader close: keep `readerShellOpen` until `onExitComplete` so split layout does not collapse mid-exit; guard reopen race with `readerIdRef`
 - Stats Score unscored: max 10, concurrency 2; does not auto-brief entire feed on load
 - Intent stats key `shapeshift:intent-stats:v1` — no raw input text stored
@@ -138,12 +141,13 @@ Waitlist landing at `/` (Convex) + live demo at `/demo`; prior news/IC work rema
 
 ## Next
 
-1. From `apps/web`: `bunx convex dev` → set `NEXT_PUBLIC_CONVEX_URL` in `.env.local` → smoke-test waitlist join
-2. Add `NEXT_PUBLIC_CONVEX_URL` on Vercel; Root Directory = `apps/web`
-3. Apply IC migrations in Supabase SQL Editor: `20260926120000_cxo_feed_deep_dive.sql` + `20260926130000_cxo_feed_brief.sql`
-4. Set `PERPLEXITY_API_KEY` in `apps/web/.env` and smoke-test Generate Deep Dive (confirm `persisted: true`)
-5. Optional: IC Supabase Auth UI instead of env JWT / password mint
-6. Smoke-test `/news?view=stats` + Score unscored; use `/demo` then Stats for intent section
+1. Deploy citation-sources fix to Vercel; open Graphify deep dive — should auto-regen sources once (or click Regenerate)
+2. From `apps/web`: `bunx convex dev` → set `NEXT_PUBLIC_CONVEX_URL` in `.env.local` → smoke-test waitlist join
+3. Add `NEXT_PUBLIC_CONVEX_URL` on Vercel; Root Directory = `apps/web`
+4. Apply IC migrations in Supabase SQL Editor: `20260926120000_cxo_feed_deep_dive.sql` + `20260926130000_cxo_feed_brief.sql`
+5. Set `PERPLEXITY_API_KEY` in `apps/web/.env` and smoke-test Generate Deep Dive (confirm `persisted: true` + non-empty `sources`)
+6. Optional: IC Supabase Auth UI instead of env JWT / password mint
+7. Smoke-test `/news?view=stats` + Score unscored; use `/demo` then Stats for intent section
 
 ## Decisions
 
@@ -180,6 +184,7 @@ Waitlist landing at `/` (Convex) + live demo at `/demo`; prior news/IC work rema
 - Brief fetch: do not `setState` synchronously in `useEffect` — yield with `await Promise.resolve()` then set loading; use `briefCacheRef` so cache hits skip refetch without dep thrash
 - Deep Dive needs `PERPLEXITY_API_KEY`; without it the BFF returns 503 with setup message (never log the key)
 - Deep Dive persist: apply IC migration `20260926120000_cxo_feed_deep_dive.sql` (column `ba_cxo_feed_items.deep_dive` jsonb) before store works; Regenerate uses `force: true`
+- Deep Dive sources: UI hides Sources + leaves raw `[web:N]` when `sources=[]`; incomplete rows (cites, no sources) are not served from DB/LRU cache and auto-heal once on reader open
 - Reader close: keep `readerShellOpen` until `onExitComplete` so split layout does not collapse mid-exit; guard reopen race with `readerIdRef`
 - Stats Score unscored: max 10, concurrency 2; does not auto-brief entire feed on load
 - Intent stats key `shapeshift:intent-stats:v1` — no raw input text stored
