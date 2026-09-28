@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { placeContactRequestSchema, toInboundLeadPayload } from "./types";
+import {
+  buildLeadFlowSourceId,
+  placeContactRequestSchema,
+  toInboundLeadPayload,
+} from "./types";
 
 const base = {
   name: "Nguyen Van A",
   email: "A@Example.COM",
+  role: "decision_maker" as const,
   phone: "+84901234567",
   notes: "Met on site",
   placeId: "ChIJ_test",
@@ -17,6 +22,11 @@ describe("placeContactRequestSchema", () => {
     const parsed = placeContactRequestSchema.parse(base);
     expect(parsed.email).toBe("A@Example.COM");
     expect(parsed.placeName).toBe("Cafe ABC");
+    expect(parsed.role).toBe("decision_maker");
+  });
+
+  test("rejects unknown role code", () => {
+    expect(placeContactRequestSchema.safeParse({ ...base, role: "Manager" }).success).toBe(false);
   });
 
   test("rejects missing email", () => {
@@ -30,37 +40,47 @@ describe("placeContactRequestSchema", () => {
 });
 
 describe("toInboundLeadPayload", () => {
-  test("maps place to company and lowercases email", () => {
+  test("maps to new inbound lead shape", () => {
     const input = placeContactRequestSchema.parse(base);
-    const payload = toInboundLeadPayload(input, "ch-35ed1c04");
+    const payload = toInboundLeadPayload(input, {
+      channelId: "ch-35ed1c04",
+      sourceCampaign: "shapeshift-places",
+      sourceIdSuffix: "fixed-suffix",
+      timestamp: "2026-04-03T12:00:00.000Z",
+    });
     expect(payload).toEqual({
-      name: "Nguyen Van A",
-      email: "a@example.com",
-      company: "Cafe ABC",
       channel_id: "ch-35ed1c04",
+      source_id: "shapeshift-places:ChIJ_test:fixed-suffix",
+      name: "Nguyen Van A",
+      company: "Cafe ABC",
+      email: "a@example.com",
       phone: "+84901234567",
-      notes: "Met on site",
-      address: "123 Nguyen Hue, HCMC",
-      source: "shapeshift-places",
-      custom_fields: {
-        placeId: "ChIJ_test",
-        placeName: "Cafe ABC",
-        mapsUri: "https://maps.example.com/place",
-      },
+      source_campaign: "shapeshift-places",
+      timestamp: "2026-04-03T12:00:00.000Z",
+      role: "decision_maker",
     });
   });
 
-  test("omits empty optional fields", () => {
+  test("omits optional phone and role", () => {
     const input = placeContactRequestSchema.parse({
       name: "B",
       email: "b@example.com",
       placeId: "p1",
       placeName: "Shop",
     });
-    const payload = toInboundLeadPayload(input, "ch-x");
+    const payload = toInboundLeadPayload(input, {
+      channelId: "ch-x",
+      sourceIdSuffix: "s1",
+      timestamp: "2026-04-03T12:00:00.000Z",
+      sourceCampaign: "shapeshift-places",
+    });
     expect(payload.phone).toBeUndefined();
-    expect(payload.notes).toBeUndefined();
-    expect(payload.address).toBeUndefined();
-    expect(payload.custom_fields).toEqual({ placeId: "p1", placeName: "Shop" });
+    expect(payload.role).toBeUndefined();
+    expect(payload.source_id).toBe("shapeshift-places:p1:s1");
+    expect(payload.company).toBe("Shop");
+  });
+
+  test("buildLeadFlowSourceId prefixes place id", () => {
+    expect(buildLeadFlowSourceId("place-1", "abc")).toBe("shapeshift-places:place-1:abc");
   });
 });

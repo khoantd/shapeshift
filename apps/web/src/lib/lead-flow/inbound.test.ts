@@ -41,8 +41,15 @@ describe("createInboundLead", () => {
         const headers = new Headers(init?.headers);
         expect(headers.get("Authorization")).toBe("Bearer lf_test_key");
         const body = JSON.parse(String(init?.body));
-        expect(body.company).toBe("Cafe ABC");
         expect(body.channel_id).toBe("ch-35ed1c04");
+        expect(body.company).toBe("Cafe ABC");
+        expect(body.name).toBe("Nguyen Van A");
+        expect(body.email).toBe("a@example.com");
+        expect(body.source_campaign).toBe("shapeshift-places");
+        expect(typeof body.source_id).toBe("string");
+        expect(String(body.source_id).startsWith("shapeshift-places:ChIJ_test:")).toBe(true);
+        expect(typeof body.timestamp).toBe("string");
+        expect(body.role).toBe("decision_maker");
         return new Response(JSON.stringify({ id: "lead-123", created: true }), {
           status: 201,
           headers: { "Content-Type": "application/json" },
@@ -52,8 +59,10 @@ describe("createInboundLead", () => {
       const result = await createInboundLead({
         name: "Nguyen Van A",
         email: "a@example.com",
+        role: "decision_maker",
         placeId: "ChIJ_test",
         placeName: "Cafe ABC",
+        phone: "+84901234567",
       });
       expect(result).toEqual({ id: "lead-123", created: true });
     } finally {

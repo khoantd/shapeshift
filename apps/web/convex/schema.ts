@@ -16,6 +16,7 @@ const schema = defineSchema({
     formattedAddress: v.optional(v.string()),
     name: v.string(),
     email: v.string(),
+    role: v.optional(v.string()),
     phone: v.optional(v.string()),
     notes: v.optional(v.string()),
     leadFlowLeadId: v.optional(v.string()),
@@ -23,9 +24,7 @@ const schema = defineSchema({
     syncError: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  })
-    .index("by_placeId", ["placeId"])
-    .index("by_placeId_email", ["placeId", "email"]),
+  }).index("by_placeId", ["placeId"]),
 });
 
 export default schema;

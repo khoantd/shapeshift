@@ -21,6 +21,7 @@ Places: add person contacts with local Convex history + Lead Flow sync.
 - UI: Add contact form + list on `PlaceDetailCard` via `PlaceContactsSection`
 - Env docs: `LEAD_FLOW_API_KEY`, `LEAD_FLOW_BASE_URL`, `LEAD_FLOW_CHANNEL_ID`
 - Tests: `apps/web/src/lib/lead-flow/*.test.ts` (10 pass)
+- **Fix:** lift `ConvexClientProvider` to root `app/layout.tsx` so `/places` `useQuery` has a Convex client (was only on waitlist `page.tsx`)
 
 ## In progress
 
@@ -28,10 +29,10 @@ Places: add person contacts with local Convex history + Lead Flow sync.
 
 ## Next
 
-1. Run `bunx convex dev` (or deploy) from `apps/web` so `placeContacts` schema + functions sync
-2. Ensure `NEXT_PUBLIC_CONVEX_URL` is set (same as waitlist)
-3. **Rotate** the Lead Flow API key (it was pasted in chat) and update `LEAD_FLOW_API_KEY` in `apps/web/.env`
-4. Smoke-test: open a place → Add contact → confirm Lead Flow lead + Convex list badge Synced
+1. Restart Next (`bun run dev`) so it picks up `.env.local` → local Convex `http://127.0.0.1:3210`
+2. Smoke-test: open a place → Add contact → confirm Lead Flow lead + Convex list badge Synced
+3. To sync the **cloud** deployment (`brazen-dinosaur-465`): `npx convex login` then `npx convex dev --configure=existing` (or `convex deploy`)
+4. **Rotate** the Lead Flow API key (it was pasted in chat) and update `LEAD_FLOW_API_KEY` in `apps/web/.env`
 
 ## Decisions
 
@@ -44,6 +45,7 @@ Places: add person contacts with local Convex history + Lead Flow sync.
 - Without Convex URL, UI shows config hint (contacts unavailable)
 - Lead Flow requires `name`, `company` (place name), `email`, `channel_id`
 - Never commit `LEAD_FLOW_API_KEY`; rotate if exposed
+- Cloud `brazen-dinosaur-465` lacked `placeContacts` until push; local `convex dev` is running on `:3210` via `.env.local` (overrides `.env`). Keep that process up while developing. Cloud push needs `npx convex login`.
 
 ## Pointers
 

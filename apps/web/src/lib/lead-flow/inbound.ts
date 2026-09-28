@@ -2,6 +2,7 @@ import {
   getLeadFlowApiKey,
   getLeadFlowBaseUrl,
   getLeadFlowChannelId,
+  getLeadFlowSourceCampaign,
   leadFlowConfigured,
   missingLeadFlowConfigMessage,
 } from "./config";
@@ -24,7 +25,10 @@ export async function createInboundLead(
   const baseUrl = getLeadFlowBaseUrl();
   const channelId = getLeadFlowChannelId();
   const apiKey = getLeadFlowApiKey();
-  const body = toInboundLeadPayload(input, channelId);
+  const body = toInboundLeadPayload(input, {
+    channelId,
+    sourceCampaign: getLeadFlowSourceCampaign(),
+  });
 
   const res = await fetch(`${baseUrl}/api/inbound/leads`, {
     method: "POST",

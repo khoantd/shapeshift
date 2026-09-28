@@ -182,6 +182,8 @@ export function PlaceDetailCard({
           )}
         </div>
 
+        <PlaceContactsSection place={place} compact={isMap} />
+
         {place.reviews && place.reviews.length > 0 && (
           <div className="mt-3 border-t border-border pt-3">
             <h3 className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -206,8 +208,6 @@ export function PlaceDetailCard({
             </ul>
           </div>
         )}
-
-        <PlaceContactsSection place={place} compact={isMap} />
       </div>
     </article>
   );

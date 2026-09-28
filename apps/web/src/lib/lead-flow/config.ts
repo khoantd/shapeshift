@@ -1,5 +1,6 @@
 const DEFAULT_BASE_URL = "https://lead-flow-gilt.vercel.app";
 const DEFAULT_CHANNEL_ID = "ch-35ed1c04";
+const DEFAULT_SOURCE_CAMPAIGN = "shapeshift-places";
 
 export function getLeadFlowApiKey(): string {
   return (process.env.LEAD_FLOW_API_KEY ?? "").trim();
@@ -12,6 +13,11 @@ export function getLeadFlowBaseUrl(): string {
 
 export function getLeadFlowChannelId(): string {
   return (process.env.LEAD_FLOW_CHANNEL_ID ?? "").trim() || DEFAULT_CHANNEL_ID;
+}
+
+/** Campaign tag sent as `source_campaign` on inbound leads. */
+export function getLeadFlowSourceCampaign(): string {
+  return (process.env.LEAD_FLOW_SOURCE_CAMPAIGN ?? "").trim() || DEFAULT_SOURCE_CAMPAIGN;
 }
 
 export function leadFlowConfigured(): boolean {

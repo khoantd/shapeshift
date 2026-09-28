@@ -3,9 +3,7 @@ import { mutation, query } from "./_generated/server";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const syncStatus = v.union(v.literal("pending"), v.literal("synced"), v.literal("failed"));
-
-/** List contacts saved for a place, newest first. */
+/** List contacts saved for a place, newest first. Many contacts per place are allowed. */
 export const listByPlaceId = query({
   args: { placeId: v.string() },
   handler: async (ctx, args) => {
@@ -22,8 +20,8 @@ export const listByPlaceId = query({
 });
 
 /**
- * Create or refresh a contact for a place (keyed by placeId + email).
- * Always sets syncStatus to pending so the client can push to Lead Flow.
+ * Always inserts a new contact for the place (one place → many contacts).
+ * Sets syncStatus to pending so the client can push to Lead Flow.
  */
 export const create = mutation({
   args: {
@@ -32,6 +30,7 @@ export const create = mutation({
     formattedAddress: v.optional(v.string()),
     name: v.string(),
     email: v.string(),
+    role: v.optional(v.string()),
     phone: v.optional(v.string()),
     notes: v.optional(v.string()),
   },
@@ -40,38 +39,20 @@ export const create = mutation({
     const placeName = args.placeName.trim();
     const name = args.name.trim();
     const email = args.email.trim().toLowerCase();
+    const role = args.role?.trim() || undefined;
 
     if (!placeId || !placeName) throw new Error("Place is required.");
     if (!name) throw new Error("Name is required.");
     if (!EMAIL_PATTERN.test(email)) throw new Error("Please enter a valid email address.");
 
     const now = Date.now();
-    const existing = await ctx.db
-      .query("placeContacts")
-      .withIndex("by_placeId_email", (q) => q.eq("placeId", placeId).eq("email", email))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        placeName,
-        formattedAddress: args.formattedAddress?.trim() || undefined,
-        name,
-        phone: args.phone?.trim() || undefined,
-        notes: args.notes?.trim() || undefined,
-        syncStatus: "pending",
-        syncError: undefined,
-        leadFlowLeadId: undefined,
-        updatedAt: now,
-      });
-      return { id: existing._id, status: "updated" as const };
-    }
-
     const id = await ctx.db.insert("placeContacts", {
       placeId,
       placeName,
       formattedAddress: args.formattedAddress?.trim() || undefined,
       name,
       email,
+      role,
       phone: args.phone?.trim() || undefined,
       notes: args.notes?.trim() || undefined,
       syncStatus: "pending",

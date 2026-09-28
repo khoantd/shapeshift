@@ -1,4 +1,3 @@
-import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import { WaitlistLanding } from "@/components/waitlist/WaitlistLanding";
 import type { Metadata } from "next";
 
@@ -14,9 +13,5 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return (
-    <ConvexClientProvider>
-      <WaitlistLanding />
-    </ConvexClientProvider>
-  );
+  return <WaitlistLanding />;
 }
