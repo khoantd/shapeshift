@@ -2,10 +2,8 @@ import "server-only";
 
 import {
   placeDetailsSchema,
-  placePredictionSchema,
   sanitizeHttpsUrl,
   type PlaceDetails,
-  type PlacePrediction,
 } from "./types";
 import { PlacesApiError } from "./errors";
 import {
@@ -14,6 +12,12 @@ import {
   normalizeReviews,
   normalizeTypes,
 } from "./serpapi-normalize";
+import {
+  buildSerpMapsSearchLocationParams,
+  normalizeSerpStart,
+  rankSerpPredictionsForAutocomplete,
+  type SerpAutocompletePage,
+} from "./serpapi-search";
 
 export {
   extractImageUrls,
@@ -21,6 +25,14 @@ export {
   normalizeReviews,
   normalizeTypes,
 } from "./serpapi-normalize";
+export {
+  buildSerpMapsSearchLocationParams,
+  isAddressLikePlacesQuery,
+  predictionsFromSerpMapsBody,
+  rankSerpPredictionsForAutocomplete,
+  shouldApplySerpLocationBias,
+} from "./serpapi-search";
+export type { SerpAutocompletePage } from "./serpapi-search";
 
 const SEARCH_URL = "https://serpapi.com/search.json";
 
@@ -99,26 +111,6 @@ function mapsUriFor(lat: number, lng: number, placeId?: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
-function mapLocalToPrediction(r: SerpLocalResult): PlacePrediction | null {
-  if (!r.place_id || !r.title?.trim()) return null;
-  const lat = r.gps_coordinates?.latitude;
-  const lng = r.gps_coordinates?.longitude;
-  const thumbnail =
-    sanitizeHttpsUrl(r.thumbnail) || sanitizeHttpsUrl(r.serpapi_thumbnail);
-  const parsed = placePredictionSchema.safeParse({
-    placeId: r.place_id,
-    mainText: r.title.trim(),
-    secondaryText: r.address?.trim() || undefined,
-    lat: Number.isFinite(lat) ? lat : undefined,
-    lng: Number.isFinite(lng) ? lng : undefined,
-    rating: Number.isFinite(r.rating) ? r.rating : undefined,
-    reviewCount: Number.isFinite(r.reviews) ? Math.trunc(r.reviews!) : undefined,
-    openState: r.open_state?.trim().slice(0, 200) || undefined,
-    thumbnail,
-  });
-  return parsed.success ? parsed.data : null;
-}
-
 function mapToDetails(place: SerpPlaceResult | SerpLocalResult, fallbackPlaceId: string): PlaceDetails | null {
   const lat = place.gps_coordinates?.latitude;
   const lng = place.gps_coordinates?.longitude;
@@ -161,21 +153,22 @@ export async function serpapiAutocompletePlaces(
   apiKey: string,
   signal?: AbortSignal,
   bias?: { lat: number; lng: number } | null,
-): Promise<PlacePrediction[]> {
+  start: number = 0,
+): Promise<SerpAutocompletePage> {
+  const pageStart = normalizeSerpStart(start);
   const url = new URL(SEARCH_URL);
   url.searchParams.set("engine", "google_maps");
   url.searchParams.set("type", "search");
   url.searchParams.set("q", input);
   url.searchParams.set("hl", "en");
   url.searchParams.set("api_key", apiKey);
-  if (
-    bias &&
-    Number.isFinite(bias.lat) &&
-    Number.isFinite(bias.lng) &&
-    Math.abs(bias.lat) <= 90 &&
-    Math.abs(bias.lng) <= 180
-  ) {
-    url.searchParams.set("ll", `@${bias.lat},${bias.lng},14z`);
+  const location = buildSerpMapsSearchLocationParams(input, bias);
+  if (location) {
+    url.searchParams.set("ll", location.ll);
+    url.searchParams.set("nearby", location.nearby);
+  }
+  if (pageStart > 0) {
+    url.searchParams.set("start", String(pageStart));
   }
 
   const res = await fetch(url, { method: "GET", signal });
@@ -188,13 +181,7 @@ export async function serpapiAutocompletePlaces(
     throw new PlacesApiError(body.error, 502);
   }
 
-  const out: PlacePrediction[] = [];
-  for (const row of body.local_results ?? []) {
-    const mapped = mapLocalToPrediction(row);
-    if (mapped) out.push(mapped);
-    if (out.length >= 8) break;
-  }
-  return out;
+  return rankSerpPredictionsForAutocomplete(body, bias, pageStart);
 }
 
 export async function serpapiGetPlaceDetails(

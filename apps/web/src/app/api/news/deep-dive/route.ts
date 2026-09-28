@@ -10,6 +10,8 @@ import {
   DeepDiveUpstreamError,
   deepDiveSourcesIncomplete,
   parseDeepDiveRequest,
+  resolveDeepDiveLanguage,
+  resolveStoredDeepDiveLanguage,
   runNewsDeepDive,
 } from "@/lib/perplexity/deepDive";
 
@@ -23,6 +25,7 @@ export async function POST(request: Request) {
 
   const input = parsed.data;
   const itemId = input.id?.trim() || "";
+  const language = resolveDeepDiveLanguage(input);
 
   let accessToken: string | null = null;
   if (itemId) {
@@ -43,13 +46,18 @@ export async function POST(request: Request) {
     if (itemId && accessToken && !input.force) {
       try {
         const stored = await getCxoFeedItemDeepDive({ accessToken, id: itemId });
-        if (stored?.text && !deepDiveSourcesIncomplete(stored.text, stored.sources)) {
+        if (
+          stored?.text &&
+          !deepDiveSourcesIncomplete(stored.text, stored.sources) &&
+          resolveStoredDeepDiveLanguage(stored) === language
+        ) {
           return Response.json({
             success: true,
             text: stored.text,
             sources: stored.sources,
             responseId: stored.responseId ?? null,
             model: stored.model ?? null,
+            language,
             cached: true,
             persisted: true,
           });
@@ -63,7 +71,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = await runNewsDeepDive(input, request.signal);
+    const result = await runNewsDeepDive({ ...input, language }, request.signal);
 
     let persisted = false;
     if (itemId && accessToken) {
@@ -77,6 +85,7 @@ export async function POST(request: Request) {
             model: result.model,
             responseId: result.responseId,
             generatedAt: new Date().toISOString(),
+            language,
           },
         });
         persisted = true;
@@ -96,6 +105,7 @@ export async function POST(request: Request) {
       sources: result.sources,
       responseId: result.responseId,
       model: result.model,
+      language,
       cached: result.cached,
       persisted,
     });

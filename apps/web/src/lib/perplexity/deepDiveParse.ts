@@ -5,6 +5,8 @@ export type DeepDiveSource = {
   id?: number;
 };
 
+export type DeepDiveLanguage = "vi" | "en";
+
 export type DeepDiveRequest = {
   title: string;
   excerpt: string;
@@ -13,6 +15,8 @@ export type DeepDiveRequest = {
   id?: string;
   /** When true, skip DB cache and regenerate via Perplexity */
   force?: boolean;
+  /** Output language for the deep dive. Defaults to Vietnamese (`vi`). */
+  language?: DeepDiveLanguage;
 };
 
 export type DeepDiveParseError = { ok: false; error: string };
@@ -34,6 +38,7 @@ export function parseDeepDiveRequest(body: unknown): DeepDiveParseOk | DeepDiveP
   const canonicalUrl = canonicalUrlRaw || undefined;
   const id = typeof raw.id === "string" ? raw.id.trim().slice(0, 128) : undefined;
   const force = raw.force === true;
+  const language = parseDeepDiveLanguage(raw.language) ?? "vi";
 
   if (!title && !excerpt) {
     return { ok: false, error: "title or excerpt required" };
@@ -44,6 +49,7 @@ export function parseDeepDiveRequest(body: unknown): DeepDiveParseOk | DeepDiveP
     data: {
       title,
       excerpt,
+      language,
       ...(canonicalUrl ? { canonicalUrl } : {}),
       ...(id ? { id } : {}),
       ...(force ? { force: true } : {}),
@@ -51,22 +57,45 @@ export function parseDeepDiveRequest(body: unknown): DeepDiveParseOk | DeepDiveP
   };
 }
 
-export type DeepDiveLanguage = "vi" | "en";
-
 /**
  * Heuristic: Vietnamese news uses distinctive Latin letters (đ/ơ/ư and
  * Latin Extended Additional tone marks U+1EA0–U+1EF9). Plain ASCII → English.
+ * Used for legacy stored payloads that lack an explicit `language` field.
  */
 const VIETNAMESE_CHAR_RE =
   /[\u0110\u0111\u01A0\u01A1\u01AF\u01B0\u1EA0-\u1EF9]/;
+
+export function parseDeepDiveLanguage(raw: unknown): DeepDiveLanguage | null {
+  if (raw === "vi" || raw === "en") return raw;
+  return null;
+}
 
 export function detectDeepDiveLanguage(input: Pick<DeepDiveRequest, "title" | "excerpt">): DeepDiveLanguage {
   const text = `${input.title} ${input.excerpt}`;
   return VIETNAMESE_CHAR_RE.test(text) ? "vi" : "en";
 }
 
+/** Prefer explicit request language; default Vietnamese. */
+export function resolveDeepDiveLanguage(
+  input: Pick<DeepDiveRequest, "language">,
+): DeepDiveLanguage {
+  return input.language === "en" ? "en" : "vi";
+}
+
+/**
+ * Resolve language for a stored deep dive payload.
+ * Legacy rows without `language` are inferred from the generated text.
+ */
+export function resolveStoredDeepDiveLanguage(stored: {
+  language?: DeepDiveLanguage | null;
+  text: string;
+}): DeepDiveLanguage {
+  if (stored.language === "vi" || stored.language === "en") return stored.language;
+  return detectDeepDiveLanguage({ title: stored.text.slice(0, 500), excerpt: "" });
+}
+
 export function deepDiveCacheKey(input: DeepDiveRequest): string {
-  const lang = detectDeepDiveLanguage(input);
+  const lang = resolveDeepDiveLanguage(input);
   const body = `${input.title}\n${input.excerpt}\n${input.canonicalUrl ?? ""}`
     .toLowerCase()
     .replace(/\s+/g, " ")
@@ -199,7 +228,7 @@ export function deepDiveSourcesIncomplete(
 }
 
 export function buildDeepDivePrompt(input: DeepDiveRequest): string {
-  const lang = detectDeepDiveLanguage(input);
+  const lang = resolveDeepDiveLanguage(input);
   const parts = [
     "Provide a concise deep dive on this news story for an executive reader.",
     "Respond in clean Markdown: short paragraphs, **bold** for key terms, bullet lists when helpful. Prefer 2–4 short sections. No HTML.",

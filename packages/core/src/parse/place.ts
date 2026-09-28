@@ -129,6 +129,10 @@ export function placeDataFromSlashPick(
 /**
  * Compose autocomplete search text from optional category + keywords.
  * Providers stay free-text (no shared OSM type filters).
+ *
+ * Appends the category only for short single-token keywords (`coffee` →
+ * `coffee shop`). Multi-word queries (brand/place names) keep keywords only
+ * so OSM category tokens do not muddy Maps ranking.
  */
 export function composePlacesSearchQuery(
   category: PlaceCategory | string | null | undefined,
@@ -136,7 +140,10 @@ export function composePlacesSearchQuery(
 ): string {
   const q = collapse(keywords);
   const cat = (category ?? "").trim().toLowerCase();
-  if (q && cat) return `${q} ${cat}`;
+  if (q && cat) {
+    const isShortSingleToken = !/\s/.test(q);
+    return isShortSingleToken ? `${q} ${cat}` : q;
+  }
   if (q) return q;
   return cat;
 }

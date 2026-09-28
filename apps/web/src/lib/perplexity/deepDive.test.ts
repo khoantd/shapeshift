@@ -6,6 +6,8 @@ import {
   detectDeepDiveLanguage,
   extractDeepDiveSources,
   parseDeepDiveRequest,
+  resolveDeepDiveLanguage,
+  resolveStoredDeepDiveLanguage,
 } from "./deepDiveParse";
 
 describe("parseDeepDiveRequest", () => {
@@ -21,6 +23,7 @@ describe("parseDeepDiveRequest", () => {
       title: "Hello",
       excerpt: "World",
       canonicalUrl: "https://example.com/story",
+      language: "vi",
     });
   });
 
@@ -40,6 +43,17 @@ describe("parseDeepDiveRequest", () => {
     if (!parsed.ok) return;
     expect(parsed.data.id).toBe("abc-123");
     expect(parsed.data.force).toBe(true);
+    expect(parsed.data.language).toBe("vi");
+  });
+
+  test("accepts language and defaults invalid to vi", () => {
+    const en = parseDeepDiveRequest({ title: "T", excerpt: "E", language: "en" });
+    expect(en.ok).toBe(true);
+    if (en.ok) expect(en.data.language).toBe("en");
+
+    const bad = parseDeepDiveRequest({ title: "T", excerpt: "E", language: "fr" });
+    expect(bad.ok).toBe(true);
+    if (bad.ok) expect(bad.data.language).toBe("vi");
   });
 });
 
@@ -162,23 +176,60 @@ describe("detectDeepDiveLanguage", () => {
   });
 });
 
+describe("resolveDeepDiveLanguage", () => {
+  test("defaults to Vietnamese", () => {
+    expect(resolveDeepDiveLanguage({})).toBe("vi");
+    expect(resolveDeepDiveLanguage({ language: undefined })).toBe("vi");
+  });
+
+  test("honors explicit English", () => {
+    expect(resolveDeepDiveLanguage({ language: "en" })).toBe("en");
+  });
+});
+
+describe("resolveStoredDeepDiveLanguage", () => {
+  test("uses stored language when present", () => {
+    expect(resolveStoredDeepDiveLanguage({ language: "en", text: "Xin chào" })).toBe("en");
+    expect(resolveStoredDeepDiveLanguage({ language: "vi", text: "Hello" })).toBe("vi");
+  });
+
+  test("infers from text when language missing", () => {
+    expect(
+      resolveStoredDeepDiveLanguage({ text: "Việt Nam thúc đẩy chuyển đổi số trong doanh nghiệp." }),
+    ).toBe("vi");
+    expect(resolveStoredDeepDiveLanguage({ text: "Markets react calmly to the rate decision." })).toBe(
+      "en",
+    );
+  });
+});
+
 describe("buildDeepDivePrompt", () => {
-  test("instructs Vietnamese for Vietnamese stories", () => {
+  test("defaults to Vietnamese when language omitted", () => {
     const prompt = buildDeepDivePrompt({
-      title: "Việt Nam thúc đẩy chuyển đổi số",
-      excerpt: "Chính phủ công bố kế hoạch mới.",
+      title: "Fed holds rates steady",
+      excerpt: "Markets react calmly.",
     });
     expect(prompt).toContain("tiếng Việt");
     expect(prompt).not.toContain("Respond in English.");
   });
 
-  test("instructs English for English stories", () => {
+  test("explicit English overrides Vietnamese title", () => {
     const prompt = buildDeepDivePrompt({
-      title: "Fed holds rates steady",
-      excerpt: "Markets react calmly.",
+      title: "Việt Nam thúc đẩy chuyển đổi số",
+      excerpt: "Chính phủ công bố kế hoạch mới.",
+      language: "en",
     });
     expect(prompt).toContain("Respond in English.");
     expect(prompt).not.toContain("tiếng Việt");
+  });
+
+  test("explicit Vietnamese for ASCII stories", () => {
+    const prompt = buildDeepDivePrompt({
+      title: "Fed holds rates steady",
+      excerpt: "Markets react calmly.",
+      language: "vi",
+    });
+    expect(prompt).toContain("tiếng Việt");
   });
 });
 
@@ -189,10 +240,12 @@ describe("deepDiveCacheKey", () => {
     );
   });
 
-  test("includes language prefix", () => {
-    const en = deepDiveCacheKey({ title: "Hello", excerpt: "World" });
-    const vi = deepDiveCacheKey({ title: "Xin chào", excerpt: "Thế giới" });
-    expect(en.startsWith("en|")).toBe(true);
+  test("includes language prefix and separates langs", () => {
+    const sameStory = { title: "Hello", excerpt: "World" };
+    const vi = deepDiveCacheKey(sameStory);
+    const en = deepDiveCacheKey({ ...sameStory, language: "en" });
     expect(vi.startsWith("vi|")).toBe(true);
+    expect(en.startsWith("en|")).toBe(true);
+    expect(vi).not.toBe(en);
   });
 });

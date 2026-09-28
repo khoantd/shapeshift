@@ -29,6 +29,8 @@ export type CxoFeedDeepDive = {
   model?: string | null;
   responseId?: string | null;
   generatedAt?: string | null;
+  /** Output language used when generating (`vi` | `en`). */
+  language?: "vi" | "en" | null;
 };
 
 export type CxoFeedItem = {
@@ -120,6 +122,9 @@ function parseDeepDivePayload(raw: unknown): CxoFeedDeepDive | null {
       return id != null ? { title, url, id } : { title, url };
     })
     .filter((s): s is { title: string; url: string; id?: number } => s != null);
+  const languageRaw = row.language;
+  const language =
+    languageRaw === "vi" || languageRaw === "en" ? languageRaw : null;
   return {
     text,
     sources,
@@ -136,6 +141,7 @@ function parseDeepDivePayload(raw: unknown): CxoFeedDeepDive | null {
         : typeof row.generated_at === "string"
           ? row.generated_at
           : null,
+    ...(language ? { language } : {}),
   };
 }
 
@@ -549,12 +555,17 @@ export async function setCxoFeedItemDeepDive(params: {
     throw new InspiredCanvasClientError("Inspired Canvas Supabase is not configured", 503);
   }
 
+  const language =
+    params.deepDive.language === "vi" || params.deepDive.language === "en"
+      ? params.deepDive.language
+      : null;
   const payload: CxoFeedDeepDive = {
     text: params.deepDive.text.trim(),
     sources: params.deepDive.sources ?? [],
     model: params.deepDive.model ?? null,
     responseId: params.deepDive.responseId ?? null,
     generatedAt: params.deepDive.generatedAt ?? new Date().toISOString(),
+    ...(language ? { language } : {}),
   };
 
   if (!payload.text) {

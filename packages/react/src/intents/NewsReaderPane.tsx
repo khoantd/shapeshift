@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button } from "../ui/button";
+import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 import { spring, tween } from "../lib/motion";
 import { cn } from "../lib/utils";
 import {
@@ -30,6 +31,8 @@ export type NewsBriefView = {
   source?: "jev" | "mock";
 };
 
+export type NewsDeepDiveLanguage = "vi" | "en";
+
 export type NewsDeepDiveSource = {
   title: string;
   url: string;
@@ -40,6 +43,7 @@ export type NewsDeepDiveSource = {
 export type NewsDeepDiveView = {
   text: string;
   sources: NewsDeepDiveSource[];
+  language?: NewsDeepDiveLanguage;
 };
 
 function relativeWhen(iso: string): string | null {
@@ -108,6 +112,8 @@ const ReaderBody = forwardRef<
     deepDive?: NewsDeepDiveView | null;
     deepDiveLoading?: boolean;
     deepDiveError?: string | null;
+    deepDiveLanguage?: NewsDeepDiveLanguage;
+    onDeepDiveLanguageChange?: (language: NewsDeepDiveLanguage) => void;
     onGenerateDeepDive?: () => void;
     onRegenerateDeepDive?: () => void;
     reduce: boolean | null;
@@ -122,6 +128,8 @@ const ReaderBody = forwardRef<
     deepDive,
     deepDiveLoading,
     deepDiveError,
+    deepDiveLanguage = "vi",
+    onDeepDiveLanguageChange,
     onGenerateDeepDive,
     onRegenerateDeepDive,
     reduce,
@@ -228,9 +236,41 @@ const ReaderBody = forwardRef<
       </section>
 
       <section className="flex flex-col gap-1.5" aria-label="Deep dive" aria-busy={deepDiveLoading}>
-        <h3 className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-          Deep Dive
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
+            Deep Dive
+          </h3>
+          {onDeepDiveLanguageChange ? (
+            <ToggleGroup
+              type="single"
+              value={deepDiveLanguage}
+              onValueChange={(value) => {
+                if (value === "vi" || value === "en") onDeepDiveLanguageChange(value);
+              }}
+              disabled={deepDiveLoading}
+              size="sm"
+              variant="outline"
+              spacing={0}
+              aria-label="Deep dive language"
+              className="h-7"
+            >
+              <ToggleGroupItem
+                value="vi"
+                aria-label="Vietnamese"
+                className="h-7 cursor-pointer px-2.5 text-[11px] font-medium tracking-wide transition-[color,background-color,border-color] duration-150"
+              >
+                VN
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="en"
+                aria-label="English"
+                className="h-7 cursor-pointer px-2.5 text-[11px] font-medium tracking-wide transition-[color,background-color,border-color] duration-150"
+              >
+                EN
+              </ToggleGroupItem>
+            </ToggleGroup>
+          ) : null}
+        </div>
         {deepDiveLoading && !deepDive ? (
           <p className="flex items-center gap-2 text-[14px] leading-5 text-muted-foreground">
             <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
@@ -244,7 +284,7 @@ const ReaderBody = forwardRef<
                 type="button"
                 variant="outline"
                 size="sm"
-                className="w-fit"
+                className="w-fit cursor-pointer"
                 onClick={onGenerateDeepDive}
               >
                 Try again
@@ -254,7 +294,7 @@ const ReaderBody = forwardRef<
         ) : deepDive ? (
           <AnimatePresence initial={false}>
             <motion.div
-              key="deep-dive"
+              key={`deep-dive-${deepDive.language ?? deepDiveLanguage}`}
               initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, transition: tween.exit }}
@@ -274,7 +314,7 @@ const ReaderBody = forwardRef<
                           href={src.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-ink-2 underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          className="cursor-pointer text-ink-2 underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         >
                           {src.title}
                         </a>
@@ -288,7 +328,7 @@ const ReaderBody = forwardRef<
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="w-fit"
+                  className="w-fit cursor-pointer"
                   disabled={deepDiveLoading}
                   onClick={onRegenerateDeepDive}
                 >
@@ -302,7 +342,7 @@ const ReaderBody = forwardRef<
             type="button"
             variant="outline"
             size="sm"
-            className="w-fit gap-1.5"
+            className="w-fit cursor-pointer gap-1.5"
             onClick={onGenerateDeepDive}
           >
             Generate Deep Dive
@@ -355,6 +395,8 @@ export function NewsReaderPane({
   deepDive,
   deepDiveLoading,
   deepDiveError,
+  deepDiveLanguage = "vi",
+  onDeepDiveLanguageChange,
   onGenerateDeepDive,
   onRegenerateDeepDive,
 }: {
@@ -374,6 +416,8 @@ export function NewsReaderPane({
   deepDive?: NewsDeepDiveView | null;
   deepDiveLoading?: boolean;
   deepDiveError?: string | null;
+  deepDiveLanguage?: NewsDeepDiveLanguage;
+  onDeepDiveLanguageChange?: (language: NewsDeepDiveLanguage) => void;
   onGenerateDeepDive?: () => void;
   /** When a deep dive already exists, optional regenerate handler */
   onRegenerateDeepDive?: () => void;
@@ -476,6 +520,8 @@ export function NewsReaderPane({
                 deepDive={deepDive}
                 deepDiveLoading={deepDiveLoading}
                 deepDiveError={deepDiveError}
+                deepDiveLanguage={deepDiveLanguage}
+                onDeepDiveLanguageChange={onDeepDiveLanguageChange}
                 onGenerateDeepDive={onGenerateDeepDive}
                 onRegenerateDeepDive={onRegenerateDeepDive}
                 reduce={reduce}

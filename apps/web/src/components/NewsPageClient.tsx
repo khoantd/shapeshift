@@ -16,6 +16,7 @@ import {
   NewsIntentConfirm,
   type NewsBriefView,
   type NewsDeepDiveView,
+  type NewsDeepDiveLanguage,
   type NewsFeedItem,
   type NewsSourceOption,
 } from "@shapeshift/react";
@@ -34,9 +35,20 @@ import { buildNewsSourceOptions } from "@/lib/newsSources";
 import {
   SCORE_UNSCORED_LIMIT,
   aggregateNewsBriefStats,
-  briefScore,
 } from "@/lib/newsStats";
-import { deepDiveSourcesIncomplete } from "@/lib/perplexity/deepDiveParse";
+import {
+  filterByReadStatus,
+  parseReadFilter,
+  parseSortOrder,
+  sortFeed,
+  type NewsReadFilter,
+  type NewsSortOrder,
+} from "@/lib/newsFeedView";
+import {
+  deepDiveSourcesIncomplete,
+  resolveStoredDeepDiveLanguage,
+} from "@/lib/perplexity/deepDiveParse";
+import { ToggleGroup, ToggleGroupItem } from "@shapeshift/react/ui/toggle-group";
 
 type FeedResponse = {
   success: boolean;
@@ -54,17 +66,27 @@ type DeepDiveApiResponse = {
   success?: boolean;
   text?: string;
   sources?: NewsDeepDiveView["sources"];
+  language?: NewsDeepDiveLanguage;
   error?: string;
   persisted?: boolean;
 };
+
+function deepDiveCacheEntryKey(storyId: string, language: NewsDeepDiveLanguage): string {
+  return `${storyId}:${language}`;
+}
 
 function deepDiveFromItem(item: NewsFeedItem): NewsDeepDiveView | null {
   const dd = item.deepDive;
   if (!dd?.text?.trim()) return null;
   const sources = Array.isArray(dd.sources) ? dd.sources : [];
+  const language = resolveStoredDeepDiveLanguage({
+    language: dd.language,
+    text: dd.text,
+  });
   return {
     text: dd.text.trim(),
     sources,
+    language,
   };
 }
 
@@ -88,16 +110,18 @@ function seedDeepDiveCache(
   let next = prev;
   let changed = false;
   for (const item of items) {
-    if (next[item.id]) continue;
     const view = deepDiveFromItem(item);
     if (!view) continue;
     // Skip incomplete extracts — reader will force-refresh to recover sources.
     if (deepDiveSourcesIncomplete(view.text, view.sources)) continue;
+    const lang = view.language ?? "vi";
+    const key = deepDiveCacheEntryKey(item.id, lang);
+    if (next[key]) continue;
     if (!changed) {
       next = { ...prev };
       changed = true;
     }
-    next[item.id] = view;
+    next[key] = view;
   }
   return next;
 }
@@ -142,33 +166,20 @@ function isCriticalItem(item: NewsFeedItem): boolean {
   return CRITICAL_WORDS.test(`${item.title} ${item.excerpt}`);
 }
 
-function sortFeed(
-  items: NewsFeedItem[],
-  briefs: Record<string, NewsBriefView>,
-  filterQ: string,
-): NewsFeedItem[] {
-  const hasQuery = Boolean(filterQ.trim());
-  return [...items].sort((a, b) => {
-    if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
-    if (a.isRead !== b.isRead) return a.isRead ? 1 : -1;
-    const ba = briefs[a.id];
-    const bb = briefs[b.id];
-    if (ba || bb) {
-      const scoreA = briefScore(ba, hasQuery);
-      const scoreB = briefScore(bb, hasQuery);
-      if (scoreA !== scoreB) return scoreB - scoreA;
-    }
-    const ta = Date.parse(a.publishedAt) || 0;
-    const tb = Date.parse(b.publishedAt) || 0;
-    return tb - ta;
-  });
-}
-
 type NewsView = "feed" | "stats";
 
 function parseNewsView(raw: string | null): NewsView {
   return raw === "stats" ? "stats" : "feed";
 }
+
+type SyncUrlParams = {
+  q: string;
+  critical: boolean;
+  source: string;
+  view?: NewsView;
+  read?: NewsReadFilter;
+  sort?: NewsSortOrder;
+};
 
 function briefBadgeFor(brief: NewsBriefView | undefined, hasQuery: boolean): string | undefined {
   if (!brief) return undefined;
@@ -207,11 +218,15 @@ export function NewsPageClient({
   const initialCritical = searchParams.get("critical") === "1";
   const initialSource = searchParams.get("source") ?? "";
   const initialView = parseNewsView(searchParams.get("view"));
+  const initialRead = parseReadFilter(searchParams.get("read"));
+  const initialSort = parseSortOrder(searchParams.get("sort"));
 
   const [query, setQuery] = useState(initialQ);
   const [criticalOnly, setCriticalOnly] = useState(initialCritical);
   const [sourceHint, setSourceHint] = useState(initialSource);
   const [view, setView] = useState<NewsView>(initialView);
+  const [readFilter, setReadFilter] = useState<NewsReadFilter>(initialRead);
+  const [sortOrder, setSortOrder] = useState<NewsSortOrder>(initialSort);
   const [scoringUnscored, setScoringUnscored] = useState(false);
   const [intentStats, setIntentStats] = useState<IntentStats>(() =>
     aggregateIntentStats([]),
@@ -242,9 +257,12 @@ export function NewsPageClient({
   );
   const [deepDiveErrors, setDeepDiveErrors] = useState<Record<string, string>>({});
   const [deepDiveLoadingId, setDeepDiveLoadingId] = useState<string | null>(null);
+  const [deepDiveLanguage, setDeepDiveLanguage] = useState<NewsDeepDiveLanguage>("vi");
   const deepDiveAbortRef = useRef<AbortController | null>(null);
   const deepDiveCacheRef = useRef(deepDiveCache);
   deepDiveCacheRef.current = deepDiveCache;
+  const deepDiveLanguageRef = useRef(deepDiveLanguage);
+  deepDiveLanguageRef.current = deepDiveLanguage;
   /** Story ids we already tried to recover sources for (avoid regen loops). */
   const deepDiveHealAttemptedRef = useRef(new Set<string>());
 
@@ -482,18 +500,23 @@ export function NewsPageClient({
   );
 
   const syncUrl = useCallback(
-    (nextQ: string, nextCritical: boolean, nextSource: string, nextView: NewsView = view) => {
-      const params = new URLSearchParams();
-      if (nextQ.trim()) params.set("q", nextQ.trim());
-      if (nextCritical) params.set("critical", "1");
-      if (nextSource.trim()) params.set("source", nextSource.trim());
-      if (nextView === "stats") params.set("view", "stats");
-      const qs = params.toString();
+    (params: SyncUrlParams) => {
+      const nextView = params.view ?? view;
+      const nextRead = params.read ?? readFilter;
+      const nextSort = params.sort ?? sortOrder;
+      const search = new URLSearchParams();
+      if (params.q.trim()) search.set("q", params.q.trim());
+      if (params.critical) search.set("critical", "1");
+      if (params.source.trim()) search.set("source", params.source.trim());
+      if (nextView === "stats") search.set("view", "stats");
+      if (nextRead !== "all") search.set("read", nextRead);
+      if (nextSort !== "newest") search.set("sort", nextSort);
+      const qs = search.toString();
       startTransition(() => {
         router.replace(qs ? `/news?${qs}` : "/news", { scroll: false });
       });
     },
-    [router, view],
+    [router, view, readFilter, sortOrder],
   );
 
   const sourceOptions: NewsSourceOption[] = useMemo(
@@ -519,8 +542,8 @@ export function NewsPageClient({
       if (criticalOnly && !isCriticalItem(item)) return false;
       return true;
     });
-    return sortFeed(filtered, briefCache, filterQ);
-  }, [items, filterQ, criticalOnly, sourceHint, briefCache]);
+    return sortFeed(filterByReadStatus(filtered, readFilter), briefCache, filterQ, sortOrder);
+  }, [items, filterQ, criticalOnly, sourceHint, briefCache, readFilter, sortOrder]);
 
   const pinned = useMemo(() => visible.filter((item) => item.isPinned), [visible]);
   const feed = useMemo(() => visible.filter((item) => !item.isPinned), [visible]);
@@ -558,7 +581,12 @@ export function NewsPageClient({
         setReaderShellOpen(false);
         clearSlashSession();
       }
-      syncUrl(query.startsWith("/") ? "" : query, criticalOnly, sourceHint, next);
+      syncUrl({
+        q: query.startsWith("/") ? "" : query,
+        critical: criticalOnly,
+        source: sourceHint,
+        view: next,
+      });
     },
     [clearSlashSession, criticalOnly, query, sourceHint, syncUrl],
   );
@@ -638,7 +666,7 @@ export function NewsPageClient({
       setSourceHint(nextSource);
       if (data.criticalOnly) setCriticalOnly(true);
       resetPage();
-      syncUrl(nextQ, nextCritical, nextSource);
+      syncUrl({ q: nextQ, critical: nextCritical, source: nextSource });
       clearSlashSession();
     },
     [criticalOnly, syncUrl, clearSlashSession, resetPage],
@@ -665,7 +693,7 @@ export function NewsPageClient({
     }
     setQuery(next);
     resetPage();
-    syncUrl(next, criticalOnly, sourceHint);
+    syncUrl({ q: next, critical: criticalOnly, source: sourceHint });
   };
 
   const onPaletteFilterChange = (filterQuery: string) => {
@@ -695,6 +723,10 @@ export function NewsPageClient({
     (item: NewsFeedItem) => {
       setReaderShellOpen(true);
       setReaderId(item.id);
+      const stored = deepDiveFromItem(item);
+      if (stored?.language === "vi" || stored?.language === "en") {
+        setDeepDiveLanguage(stored.language);
+      }
       if (!item.isRead) {
         void setItemRead(item, true);
       }
@@ -707,7 +739,12 @@ export function NewsPageClient({
       const item = items.find((row) => row.id === id);
       if (!item) return;
       setView("feed");
-      syncUrl(query.startsWith("/") ? "" : query, criticalOnly, sourceHint, "feed");
+      syncUrl({
+        q: query.startsWith("/") ? "" : query,
+        critical: criticalOnly,
+        source: sourceHint,
+        view: "feed",
+      });
       onSelectItem(item);
     },
     [criticalOnly, items, onSelectItem, query, sourceHint, syncUrl],
@@ -726,11 +763,13 @@ export function NewsPageClient({
   }, []);
 
   const generateDeepDive = useCallback(
-    (opts?: { force?: boolean }) => {
+    (opts?: { force?: boolean; language?: NewsDeepDiveLanguage }) => {
       if (!readerItem) return;
       const storyId = readerItem.id;
+      const language = opts?.language ?? deepDiveLanguageRef.current;
+      const cacheKey = deepDiveCacheEntryKey(storyId, language);
       const force = opts?.force === true;
-      if (!force && deepDiveCacheRef.current[storyId]) return;
+      if (!force && deepDiveCacheRef.current[cacheKey]) return;
 
       deepDiveAbortRef.current?.abort();
       const ctrl = new AbortController();
@@ -760,6 +799,7 @@ export function NewsPageClient({
               title,
               excerpt,
               canonicalUrl,
+              language,
               force: force || undefined,
             }),
             signal: ctrl.signal,
@@ -771,14 +811,27 @@ export function NewsPageClient({
           if (!body.text?.trim()) {
             throw new Error("Deep dive returned empty content");
           }
+          const resolvedLang: NewsDeepDiveLanguage =
+            body.language === "en" || body.language === "vi" ? body.language : language;
           const view: NewsDeepDiveView = {
             text: body.text.trim(),
             sources: Array.isArray(body.sources) ? body.sources : [],
+            language: resolvedLang,
           };
-          setDeepDiveCache((prev) => ({ ...prev, [storyId]: view }));
+          const entryKey = deepDiveCacheEntryKey(storyId, resolvedLang);
+          setDeepDiveCache((prev) => ({ ...prev, [entryKey]: view }));
           setItems((prev) =>
             prev.map((row) =>
-              row.id === storyId ? { ...row, deepDive: { text: view.text, sources: view.sources } } : row,
+              row.id === storyId
+                ? {
+                    ...row,
+                    deepDive: {
+                      text: view.text,
+                      sources: view.sources,
+                      language: view.language,
+                    },
+                  }
+                : row,
             ),
           );
         } catch (e) {
@@ -801,13 +854,20 @@ export function NewsPageClient({
   useEffect(() => {
     if (!readerItem) return;
     const storyId = readerItem.id;
-    const view = deepDiveCache[storyId] ?? deepDiveFromItem(readerItem);
+    const cacheKey = deepDiveCacheEntryKey(storyId, deepDiveLanguage);
+    const view = deepDiveCache[cacheKey] ?? (() => {
+      const fromItem = deepDiveFromItem(readerItem);
+      if (!fromItem) return null;
+      if ((fromItem.language ?? "vi") !== deepDiveLanguage) return null;
+      return fromItem;
+    })();
     if (!view || !deepDiveSourcesIncomplete(view.text, view.sources)) return;
     if (deepDiveLoadingId === storyId) return;
-    if (deepDiveHealAttemptedRef.current.has(storyId)) return;
-    deepDiveHealAttemptedRef.current.add(storyId);
-    generateDeepDive({ force: true });
-  }, [readerItem, deepDiveCache, deepDiveLoadingId, generateDeepDive]);
+    const healKey = `${storyId}:${deepDiveLanguage}`;
+    if (deepDiveHealAttemptedRef.current.has(healKey)) return;
+    deepDiveHealAttemptedRef.current.add(healKey);
+    generateDeepDive({ force: true, language: deepDiveLanguage });
+  }, [readerItem, deepDiveCache, deepDiveLoadingId, deepDiveLanguage, generateDeepDive]);
 
   const reading = readerShellOpen && view === "feed";
   const showStats = view === "stats";
@@ -819,7 +879,13 @@ export function NewsPageClient({
     : null;
   const readerDeepDive =
     readerItem != null
-      ? (deepDiveCache[readerItem.id] ?? deepDiveFromItem(readerItem) ?? null)
+      ? (deepDiveCache[deepDiveCacheEntryKey(readerItem.id, deepDiveLanguage)] ??
+        (() => {
+          const fromItem = deepDiveFromItem(readerItem);
+          if (!fromItem) return null;
+          if ((fromItem.language ?? "vi") !== deepDiveLanguage) return null;
+          return fromItem;
+        })())
       : null;
   const deepDiveError = readerItem ? deepDiveErrors[readerItem.id] ?? null : null;
   const hasQuery = Boolean(filterQ);
@@ -949,6 +1015,90 @@ export function NewsPageClient({
           <span className="sr-only" aria-live="polite">
             {paletteOpen ? "Source command list open" : confirmOpen ? "News search confirmation open" : ""}
           </span>
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                Status
+              </span>
+              <ToggleGroup
+                type="single"
+                value={readFilter}
+                onValueChange={(value) => {
+                  if (value !== "all" && value !== "unread" && value !== "read") return;
+                  setReadFilter(value);
+                  resetPage();
+                  syncUrl({
+                    q: query.startsWith("/") ? "" : query,
+                    critical: criticalOnly,
+                    source: sourceHint,
+                    read: value,
+                  });
+                }}
+                size="sm"
+                variant="outline"
+                spacing={0}
+                aria-label="Read status"
+                className="h-8"
+              >
+                <ToggleGroupItem
+                  value="all"
+                  className="h-8 cursor-pointer px-2.5 text-[12px] font-medium transition-[color,background-color,border-color] duration-150"
+                >
+                  All
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="unread"
+                  className="h-8 cursor-pointer px-2.5 text-[12px] font-medium transition-[color,background-color,border-color] duration-150"
+                >
+                  Unread
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="read"
+                  className="h-8 cursor-pointer px-2.5 text-[12px] font-medium transition-[color,background-color,border-color] duration-150"
+                >
+                  Read
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                Sort
+              </span>
+              <ToggleGroup
+                type="single"
+                value={sortOrder}
+                onValueChange={(value) => {
+                  if (value !== "newest" && value !== "oldest") return;
+                  setSortOrder(value);
+                  resetPage();
+                  syncUrl({
+                    q: query.startsWith("/") ? "" : query,
+                    critical: criticalOnly,
+                    source: sourceHint,
+                    sort: value,
+                  });
+                }}
+                size="sm"
+                variant="outline"
+                spacing={0}
+                aria-label="Sort by date"
+                className="h-8"
+              >
+                <ToggleGroupItem
+                  value="newest"
+                  className="h-8 cursor-pointer px-2.5 text-[12px] font-medium transition-[color,background-color,border-color] duration-150"
+                >
+                  Newest
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="oldest"
+                  className="h-8 cursor-pointer px-2.5 text-[12px] font-medium transition-[color,background-color,border-color] duration-150"
+                >
+                  Oldest
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          </div>
           <label className="inline-flex cursor-pointer items-center gap-2 text-[13px] font-medium text-ink-2">
             <input
               type="checkbox"
@@ -957,7 +1107,11 @@ export function NewsPageClient({
                 const next = e.currentTarget.checked;
                 setCriticalOnly(next);
                 resetPage();
-                syncUrl(query.startsWith("/") ? "" : query, next, sourceHint);
+                syncUrl({
+                  q: query.startsWith("/") ? "" : query,
+                  critical: next,
+                  source: sourceHint,
+                });
               }}
               className="size-4 rounded border accent-[var(--brand)]"
             />
@@ -974,7 +1128,11 @@ export function NewsPageClient({
                 onClick={() => {
                   setSourceHint("");
                   resetPage();
-                  syncUrl(query.startsWith("/") ? "" : query, criticalOnly, "");
+                  syncUrl({
+                    q: query.startsWith("/") ? "" : query,
+                    critical: criticalOnly,
+                    source: "",
+                  });
                 }}
                 className="cursor-pointer text-[13px] font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
@@ -1112,8 +1270,12 @@ export function NewsPageClient({
         deepDive={readerDeepDive}
         deepDiveLoading={readerItem ? deepDiveLoadingId === readerItem.id : false}
         deepDiveError={deepDiveError}
-        onGenerateDeepDive={readerItem ? () => generateDeepDive() : undefined}
-        onRegenerateDeepDive={readerItem ? () => generateDeepDive({ force: true }) : undefined}
+        deepDiveLanguage={deepDiveLanguage}
+        onDeepDiveLanguageChange={setDeepDiveLanguage}
+        onGenerateDeepDive={readerItem ? () => generateDeepDive({ language: deepDiveLanguage }) : undefined}
+        onRegenerateDeepDive={
+          readerItem ? () => generateDeepDive({ force: true, language: deepDiveLanguage }) : undefined
+        }
         className="fixed inset-0 z-50 flex min-h-0 flex-col bg-background md:static md:z-auto md:min-w-0 md:flex-1 md:border-s"
       />
 

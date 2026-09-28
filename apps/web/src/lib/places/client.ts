@@ -36,29 +36,37 @@ export const MISSING_SERVER_KEY_MESSAGE = missingPlacesConfigMessage();
 
 export type PlacesLocationBias = { lat: number; lng: number };
 
+export type AutocompletePage = {
+  predictions: PlacePrediction[];
+  nextStart: number | null;
+};
+
 export async function autocompletePlaces(
   input: string,
   signal?: AbortSignal,
   bias?: PlacesLocationBias | null,
-): Promise<PlacePrediction[]> {
+  start: number = 0,
+): Promise<AutocompletePage> {
   const provider = resolvePlacesProvider();
   if (!provider) throw new PlacesConfigError(missingPlacesConfigMessage());
 
   if (provider === "maptiler") {
     const key = getMapTilerServerKey();
     if (!key) throw new PlacesConfigError(missingPlacesConfigMessage());
-    return maptilerAutocompletePlaces(input, key, signal);
+    const predictions = await maptilerAutocompletePlaces(input, key, signal);
+    return { predictions, nextStart: null };
   }
 
   if (provider === "serpapi") {
     const key = getSerpApiKey();
     if (!key) throw new PlacesConfigError(missingPlacesConfigMessage());
-    return serpapiAutocompletePlaces(input, key, signal, bias);
+    return serpapiAutocompletePlaces(input, key, signal, bias, start);
   }
 
   const key = process.env.GOOGLE_MAPS_API_KEY?.trim() ?? "";
   if (!key) throw new PlacesConfigError(missingPlacesConfigMessage());
-  return googleAutocompletePlaces(input, key, signal);
+  const predictions = await googleAutocompletePlaces(input, key, signal);
+  return { predictions, nextStart: null };
 }
 
 export async function getPlaceDetails(

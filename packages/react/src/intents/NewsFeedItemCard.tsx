@@ -20,6 +20,7 @@ export type NewsFeedItem = {
   deepDive?: {
     text: string;
     sources: Array<{ title: string; url: string; id?: number }>;
+    language?: "vi" | "en" | null;
   } | null;
   brief?: {
     urgency: number;

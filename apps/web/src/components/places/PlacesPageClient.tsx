@@ -13,7 +13,8 @@ import {
   filterPlaceCategories,
   type PlaceCategoryOption,
 } from "@shapeshift/react";
-import { LocateFixed, MapPin, Search, Star, X } from "lucide-react";
+import { ArrowLeft, LocateFixed, MapPin, Search, Star, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
@@ -31,6 +32,7 @@ import type {
   PlacesProvider,
 } from "@/lib/places/types";
 import { shortenOpenState } from "@/lib/places/format";
+import { RESULTS_PAGE_SIZE } from "@/lib/places/serpapi-search";
 import { useUserLocation } from "@/lib/places/useUserLocation";
 import { PlaceDetailCard } from "./PlaceDetailCard";
 import { PlacesMap } from "./PlacesMap";
@@ -47,6 +49,7 @@ type PlacesPageClientProps = {
 type AutocompleteJson = {
   success: boolean;
   predictions?: PlacePrediction[];
+  nextStart?: number | null;
   error?: { code?: string; message?: string };
 };
 
@@ -108,6 +111,7 @@ export function PlacesPageClient({
   const listboxId = useId();
   const categoryListboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const mapSectionRef = useRef<HTMLElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const detailsAbortRef = useRef<AbortController | null>(null);
   const skipUrlHydrate = useRef(false);
@@ -118,6 +122,9 @@ export function PlacesPageClient({
   const [query, setQuery] = useState(initialQ);
   const [category, setCategory] = useState<PlaceCategory | null>(initialCategory);
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
+  const [displayLimit, setDisplayLimit] = useState(RESULTS_PAGE_SIZE);
+  const [nextStart, setNextStart] = useState<number | null>(null);
+  const [loadMoreBusy, setLoadMoreBusy] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -304,6 +311,8 @@ export function PlacesPageClient({
         await Promise.resolve();
         setSearchBusy(true);
         setSearchError(null);
+        setDisplayLimit(RESULTS_PAGE_SIZE);
+        setNextStart(null);
         try {
           const params = new URLSearchParams({ q });
           if (biasLat != null && biasLng != null) {
@@ -316,14 +325,19 @@ export function PlacesPageClient({
           const json = (await res.json()) as AutocompleteJson;
           if (!res.ok || !json.success) {
             setPredictions([]);
+            setNextStart(null);
             setSearchError(json.error?.message ?? "Search failed");
             return;
           }
           setPredictions(json.predictions ?? []);
+          setNextStart(
+            typeof json.nextStart === "number" ? json.nextStart : null,
+          );
           setActiveIndex(-1);
         } catch (e) {
           if (e instanceof Error && e.name === "AbortError") return;
           setPredictions([]);
+          setNextStart(null);
           setSearchError("Search failed");
         } finally {
           if (abortRef.current === ctrl) setSearchBusy(false);
@@ -335,6 +349,82 @@ export function PlacesPageClient({
       clearTimeout(timer);
     };
   }, [query, searchQuery, serverConfigured, biasLat, biasLng]);
+
+  const visiblePredictions = useMemo(
+    () => predictions.slice(0, displayLimit),
+    [predictions, displayLimit],
+  );
+
+  const canLoadMore =
+    !searchBusy &&
+    (displayLimit < predictions.length || nextStart != null);
+
+  const onLoadMore = useCallback(() => {
+    if (loadMoreBusy || searchBusy) return;
+
+    if (displayLimit < predictions.length) {
+      setDisplayLimit((n) => Math.min(n + RESULTS_PAGE_SIZE, predictions.length));
+      return;
+    }
+
+    if (nextStart == null) return;
+    const q = searchQuery.trim();
+    if (q.length < 2) return;
+
+    void (async () => {
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      setLoadMoreBusy(true);
+      setSearchError(null);
+      try {
+        const params = new URLSearchParams({ q, start: String(nextStart) });
+        if (biasLat != null && biasLng != null) {
+          params.set("lat", String(biasLat));
+          params.set("lng", String(biasLng));
+        }
+        const res = await fetch(`/api/places/autocomplete?${params}`, {
+          signal: ctrl.signal,
+        });
+        const json = (await res.json()) as AutocompleteJson;
+        if (!res.ok || !json.success) {
+          setSearchError(json.error?.message ?? "Could not load more places");
+          return;
+        }
+        const incoming = json.predictions ?? [];
+        let mergedLength = 0;
+        setPredictions((prev) => {
+          const seen = new Set(prev.map((p) => p.placeId));
+          const merged = [...prev];
+          for (const p of incoming) {
+            if (seen.has(p.placeId)) continue;
+            seen.add(p.placeId);
+            merged.push(p);
+          }
+          mergedLength = merged.length;
+          return merged;
+        });
+        setDisplayLimit((n) => Math.min(n + RESULTS_PAGE_SIZE, Math.max(mergedLength, n)));
+        setNextStart(
+          typeof json.nextStart === "number" ? json.nextStart : null,
+        );
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return;
+        setSearchError("Could not load more places");
+      } finally {
+        if (abortRef.current === ctrl) setLoadMoreBusy(false);
+      }
+    })();
+  }, [
+    biasLat,
+    biasLng,
+    displayLimit,
+    loadMoreBusy,
+    nextStart,
+    predictions.length,
+    searchBusy,
+    searchQuery,
+  ]);
 
   const selectPrediction = (prediction: PlacePrediction) => {
     // Local selection owns the URL until loadDetails syncs the new place id.
@@ -350,6 +440,8 @@ export function PlacesPageClient({
       });
       setDetailsError(null);
     }
+    // Mobile layout stacks the map below the sidebar — bring the card into view.
+    mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     void loadDetails(prediction.placeId, {
       syncQuery: trimmedQuery || prediction.mainText,
     });
@@ -479,16 +571,16 @@ export function PlacesPageClient({
       return;
     }
 
-    if (!showResultsPanel || !predictions.length) return;
+    if (!showResultsPanel || !visiblePredictions.length) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIndex((i) => (i + 1) % predictions.length);
+      setActiveIndex((i) => (i + 1) % visiblePredictions.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActiveIndex((i) => (i <= 0 ? predictions.length - 1 : i - 1));
+      setActiveIndex((i) => (i <= 0 ? visiblePredictions.length - 1 : i - 1));
     } else if (e.key === "Enter" && activeIndex >= 0) {
       e.preventDefault();
-      selectPrediction(predictions[activeIndex]!);
+      selectPrediction(visiblePredictions[activeIndex]!);
     }
   };
 
@@ -508,20 +600,29 @@ export function PlacesPageClient({
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:flex-row lg:overflow-hidden">
       <aside className="relative z-10 flex w-full shrink-0 flex-col border-b border-border bg-background lg:h-full lg:w-[380px] lg:overflow-hidden lg:border-r lg:border-b-0">
-        <div className="flex shrink-0 flex-col gap-4 px-4 pt-6 pb-4 sm:px-5">
-          <div>
-            <p className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-              <MapPin className="size-3.5" aria-hidden />
-              Places
-            </p>
-            <h1 className="mt-1 text-[28px] leading-8 font-[550] tracking-tight text-balance">
-              Search shops and places
-            </h1>
-            <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
-              Type a name or address, or{" "}
-              <span className="font-medium text-ink-2">/shop coffee</span> to
-              filter by category — then pick from the list or map.
-            </p>
+        <header className="flex shrink-0 flex-col gap-4 px-4 pt-6 pb-4 sm:px-5">
+          <div className="flex flex-col gap-4">
+            <Link
+              href="/"
+              className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <ArrowLeft className="size-3.5" aria-hidden />
+              Shapeshift
+            </Link>
+            <div>
+              <p className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
+                <MapPin className="size-3.5" aria-hidden />
+                Places
+              </p>
+              <h1 className="mt-1 text-[28px] leading-8 font-[550] tracking-tight text-balance">
+                Search shops and places
+              </h1>
+              <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
+                Type a name or address, or{" "}
+                <span className="font-medium text-ink-2">/shop coffee</span> to
+                filter by category — then pick from the list or map.
+              </p>
+            </div>
           </div>
 
           {!serverConfigured && (
@@ -604,26 +705,9 @@ export function PlacesPageClient({
               </span>
             </div>
           )}
-        </div>
+        </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 sm:px-5">
-          {detailsBusy && !selected && (
-            <div
-              className="rounded-md border border-border bg-muted/30 px-3 py-4"
-              aria-busy="true"
-              aria-live="polite"
-            >
-              <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-              <div className="mt-2 h-3 w-full animate-pulse rounded bg-muted" />
-            </div>
-          )}
-
-          {detailsError && !detailsBusy && (
-            <p className="text-[13px] leading-5 text-muted-foreground" role="alert">
-              {detailsError}
-            </p>
-          )}
-
           {showResultsPanel && (
             <div className="flex shrink-0 flex-col gap-2">
               <div className="flex items-baseline justify-between gap-2">
@@ -632,7 +716,8 @@ export function PlacesPageClient({
                 </h2>
                 {!searchBusy && predictions.length > 0 && (
                   <p className="text-[12px] text-muted-foreground">
-                    {predictions.length} place{predictions.length === 1 ? "" : "s"}
+                    Showing {visiblePredictions.length} of {predictions.length}
+                    {nextStart != null ? "+" : ""}
                   </p>
                 )}
               </div>
@@ -664,7 +749,7 @@ export function PlacesPageClient({
                     No results. Try a shop, business, or street name.
                   </li>
                 )}
-                {predictions.map((p, i) => {
+                {visiblePredictions.map((p, i) => {
                   const active = i === activeIndex;
                   const isSelected = selected?.placeId === p.placeId;
                   const openLabel = shortenOpenState(p.openState);
@@ -736,10 +821,20 @@ export function PlacesPageClient({
                   );
                 })}
               </ul>
+
+              {canLoadMore && (
+                <button
+                  type="button"
+                  onClick={onLoadMore}
+                  disabled={loadMoreBusy}
+                  aria-busy={loadMoreBusy}
+                  className="inline-flex w-full cursor-pointer items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-[13px] font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-wait disabled:opacity-60"
+                >
+                  {loadMoreBusy ? "Loading…" : "Load more"}
+                </button>
+              )}
             </div>
           )}
-
-          {selected && <PlaceDetailCard place={selected} provider={provider} />}
 
           {showEmptyHint && (
             <div className="rounded-md border border-dashed border-border px-3 py-6 text-center">
@@ -765,25 +860,63 @@ export function PlacesPageClient({
         </div>
       </aside>
 
-      <section className="relative min-h-[45vh] flex-1 lg:h-full lg:min-h-0" aria-label="Map">
+      <section
+        ref={mapSectionRef}
+        className="relative z-0 isolate min-h-[45vh] flex-1 lg:h-full lg:min-h-0"
+        aria-label="Map"
+      >
         <PlacesMap
           provider={provider}
           mapTiles={mapTiles}
           apiKey={mapsApiKey}
           mapId={mapId || undefined}
           place={selected}
-          predictions={predictions}
+          predictions={visiblePredictions}
           userLocation={userLocation}
           locateRequestId={locateRequestId}
           onSelectPrediction={selectPrediction}
         />
+
+        {(selected || detailsBusy || detailsError) && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1100] flex justify-center p-3 pb-[3.25rem] sm:p-4 sm:pb-16">
+            <div className="pointer-events-auto w-full max-w-md drop-shadow-xl">
+              {detailsBusy && !selected && (
+                <div
+                  className="rounded-xl border border-border bg-background px-3 py-4 shadow-lg"
+                  aria-busy="true"
+                  aria-live="polite"
+                >
+                  <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+                  <div className="mt-2 h-3 w-full animate-pulse rounded bg-muted" />
+                </div>
+              )}
+              {detailsError && !detailsBusy && !selected && (
+                <p
+                  className="rounded-xl border border-border bg-background px-3 py-3 text-[13px] leading-5 text-muted-foreground shadow-lg"
+                  role="alert"
+                >
+                  {detailsError}
+                </p>
+              )}
+              {selected && (
+                <PlaceDetailCard
+                  place={selected}
+                  provider={provider}
+                  variant="map"
+                  onClose={clearSelection}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={onLocateClick}
           disabled={locationStatus === "pending"}
           aria-label="Show my location"
           title="Show my location"
-          className="absolute end-3 bottom-3 z-10 inline-flex size-10 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-foreground shadow-md transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-wait disabled:opacity-60"
+          className="absolute end-3 bottom-3 z-[1200] inline-flex size-10 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-foreground shadow-md transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-wait disabled:opacity-60"
         >
           <LocateFixed
             className={`size-5 ${locationStatus === "ready" ? "text-blue-600" : ""}`}

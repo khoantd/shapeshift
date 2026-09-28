@@ -88,6 +88,7 @@ function syncPredictionMarkers(
   predictions: PlacePrediction[],
   selectedId: string | null,
   onSelect?: (prediction: PlacePrediction) => void,
+  userLocation?: UserCoords | null,
 ) {
   for (const m of layerRef.current) m.remove();
   layerRef.current = [];
@@ -115,6 +116,13 @@ function syncPredictionMarkers(
   }
 
   if (!selectedId && points.length > 0) {
+    if (
+      userLocation &&
+      Number.isFinite(userLocation.lat) &&
+      Number.isFinite(userLocation.lng)
+    ) {
+      points.push([userLocation.lat, userLocation.lng]);
+    }
     if (points.length === 1) {
       map.setView(points[0]!, 14);
     } else {
@@ -236,6 +244,7 @@ export function OsmPlacesMap({
         predictionsRef.current,
         placeRef.current?.placeId ?? null,
         onSelect,
+        userLocationRef.current,
       );
       syncSelectedMarker(L, map, markerRef, placeRef.current);
       syncUserLocation(L, map, userMarkerRef, userAccuracyRef, userLocationRef.current, {
@@ -280,6 +289,7 @@ export function OsmPlacesMap({
       predictions,
       place?.placeId ?? null,
       onSelect,
+      userLocation,
     );
     syncSelectedMarker(L, map, markerRef, place);
 

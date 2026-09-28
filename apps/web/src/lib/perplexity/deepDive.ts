@@ -16,14 +16,17 @@ import {
   type DeepDiveSource,
 } from "./deepDiveParse";
 
-export type { DeepDiveRequest, DeepDiveSource } from "./deepDiveParse";
+export type { DeepDiveLanguage, DeepDiveRequest, DeepDiveSource } from "./deepDiveParse";
 export {
   buildDeepDivePrompt,
   deepDiveCacheKey,
   deepDiveSourcesIncomplete,
   detectDeepDiveLanguage,
   extractDeepDiveSources,
+  parseDeepDiveLanguage,
   parseDeepDiveRequest,
+  resolveDeepDiveLanguage,
+  resolveStoredDeepDiveLanguage,
 } from "./deepDiveParse";
 
 export type DeepDiveResult = {

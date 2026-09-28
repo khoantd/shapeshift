@@ -785,6 +785,13 @@ describe("place slash", () => {
     expect(composePlacesSearchQuery(null, "coffee")).toBe("coffee");
     expect(composePlacesSearchQuery("amenity", "")).toBe("amenity");
     expect(composePlacesSearchQuery(null, "")).toBe("");
+    // Multi-word brand/name: keep keywords only (category stays URL/chip scope).
+    expect(composePlacesSearchQuery("shop", "Highlands Coffee")).toBe(
+      "Highlands Coffee",
+    );
+    expect(composePlacesSearchQuery("shop", "blue bottle cafe")).toBe(
+      "blue bottle cafe",
+    );
   });
 
   test("known categories list", () => {
