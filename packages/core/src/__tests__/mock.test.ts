@@ -62,6 +62,9 @@ const EXAMPLES: [string, string][] = [
   ["critical news on AI regulation", "news"],
   ["news about climate from Reuters", "news"],
   ["headlines on semiconductor supply", "news"],
+  ["find address 1600 Amphitheatre Parkway", "place"],
+  ["where is Blue Bottle Coffee", "place"],
+  ["map of Times Square", "place"],
 ];
 describe("mock classifier", () => {
   test("question count matches schema", () => expect(MOCK_QUESTION_COUNT).toBe(QUESTION_COUNT));

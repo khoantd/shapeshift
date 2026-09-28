@@ -7,7 +7,13 @@ export { NewsDetailCard } from "./intents/NewsDetailCard";
 export { NewsReaderPane, type NewsBriefView, type NewsDeepDiveView, type NewsDeepDiveSource } from "./intents/NewsReaderPane";
 export { MarkdownBody } from "./intents/MarkdownBody";
 export { NewsSourcePalette, type NewsSourceOption } from "./shapeshift/NewsSourcePalette";
+export {
+  PlaceCategoryPalette,
+  filterPlaceCategories,
+  type PlaceCategoryOption,
+} from "./shapeshift/PlaceCategoryPalette";
 export { NewsIntentConfirm } from "./shapeshift/NewsIntentConfirm";
+export { placesHref } from "./intents/PlaceCard";
 export { highlightNewsText, collectNewsHighlightTerms, extractNewsHighlightSnippets, NEWS_CRITICAL_TERMS } from "./lib/highlightNewsText";
 export { newsFeedHref } from "./intents/NewsCard";
 export { DraftContext } from "./intents/shared";

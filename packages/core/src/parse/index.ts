@@ -31,6 +31,7 @@ import { completeWorkout, parseWorkout, type WorkoutData } from "./workout";
 import { completeEmi, parseEmi, type EmiData } from "./emi";
 import { completeRecipe, parseRecipe, type RecipeData } from "./recipe";
 import { completeNews, parseNews, type NewsData } from "./news";
+import { completePlace, parsePlace, type PlaceData } from "./place";
 
 export type ParsedMap = {
   event: EventData;
@@ -64,6 +65,7 @@ export type ParsedMap = {
   emi: EmiData;
   recipe: RecipeData;
   news: NewsData;
+  place: PlaceData;
   note: NoteData;
 };
 
@@ -106,6 +108,7 @@ export const parsers: { [K in CardIntent]: Parser<K> } = {
   emi: { parse: (t) => parseEmi(t), complete: completeEmi },
   recipe: { parse: (t) => parseRecipe(t), complete: completeRecipe },
   news: { parse: (t) => parseNews(t), complete: completeNews },
+  place: { parse: (t) => parsePlace(t), complete: completePlace },
   note: { parse: (t) => parseNote(t), complete: completeNote },
 };
 

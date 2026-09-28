@@ -32,6 +32,7 @@ export const INTENT_KEYS = [
   "emi",
   "recipe",
   "news",
+  "place",
   "note",
   "none",
 ] as const;

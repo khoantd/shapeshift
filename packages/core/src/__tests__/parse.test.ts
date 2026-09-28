@@ -682,6 +682,118 @@ describe("news", () => {
   test("bare news", () => expect(parseNews("news")).toEqual({ topic: "", criticalOnly: false, sourceHint: null }));
 });
 
+import {
+  composePlacesSearchQuery,
+  parsePlace,
+  parsePlaceSlash,
+  placeDataFromSlashPick,
+  PLACE_CATEGORIES,
+} from "../parse/place";
+
+describe("place", () => {
+  test("find address lead-in", () => {
+    expect(parsePlace("find address 1600 Amphitheatre Parkway")).toEqual({
+      query: "1600 Amphitheatre Parkway",
+      category: null,
+    });
+  });
+  test("where is", () => {
+    expect(parsePlace("where is Blue Bottle Coffee").query.toLowerCase()).toContain("blue bottle");
+    expect(parsePlace("where is Blue Bottle Coffee").category).toBeNull();
+  });
+  test("map of", () => {
+    expect(parsePlace("map of Times Square")).toEqual({
+      query: "Times Square",
+      category: null,
+    });
+  });
+  test("bare place", () =>
+    expect(parsePlace("address")).toEqual({ query: "", category: null }));
+  test("street without lead-in", () => {
+    expect(parsePlace("221B Baker Street").query).toMatch(/221B Baker Street/i);
+  });
+});
+
+describe("place slash", () => {
+  test("non-slash is inactive", () => {
+    expect(parsePlaceSlash("coffee")).toEqual({
+      isSlash: false,
+      filterQuery: "",
+      category: null,
+      query: "",
+      matched: false,
+    });
+  });
+
+  test("bare slash opens palette", () => {
+    expect(parsePlaceSlash("/")).toEqual({
+      isSlash: true,
+      filterQuery: "",
+      category: null,
+      query: "",
+      matched: false,
+    });
+  });
+
+  test("prefix filters without matching", () => {
+    expect(parsePlaceSlash("/sho")).toMatchObject({
+      isSlash: true,
+      filterQuery: "sho",
+      category: null,
+      matched: false,
+    });
+  });
+
+  test("exact category match", () => {
+    expect(parsePlaceSlash("/shop")).toEqual({
+      isSlash: true,
+      filterQuery: "shop",
+      category: "shop",
+      query: "",
+      matched: true,
+    });
+  });
+
+  test("category plus keywords", () => {
+    expect(parsePlaceSlash("/shop coffee")).toEqual({
+      isSlash: true,
+      filterQuery: "shop coffee",
+      category: "shop",
+      query: "Coffee",
+      matched: true,
+    });
+  });
+
+  test("healthcare category", () => {
+    expect(parsePlaceSlash("/healthcare clinic")).toMatchObject({
+      isSlash: true,
+      category: "healthcare",
+      query: "Clinic",
+      matched: true,
+    });
+  });
+
+  test("placeDataFromSlashPick", () => {
+    expect(placeDataFromSlashPick("tourism", "museum")).toEqual({
+      query: "Museum",
+      category: "tourism",
+    });
+  });
+
+  test("composePlacesSearchQuery", () => {
+    expect(composePlacesSearchQuery("shop", "coffee")).toBe("coffee shop");
+    expect(composePlacesSearchQuery(null, "coffee")).toBe("coffee");
+    expect(composePlacesSearchQuery("amenity", "")).toBe("amenity");
+    expect(composePlacesSearchQuery(null, "")).toBe("");
+  });
+
+  test("known categories list", () => {
+    expect(PLACE_CATEGORIES).toContain("shop");
+    expect(PLACE_CATEGORIES).toContain("commercial");
+    expect(PLACE_CATEGORIES).toHaveLength(10);
+  });
+});
+
 describe("news slash", () => {
   const sources = ["Reuters", "BBC News", "CNN"];
 

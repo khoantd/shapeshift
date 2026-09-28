@@ -42,6 +42,9 @@ export async function SiteChrome() {
         <Link href="/news" className={BUTTON}>
           News
         </Link>
+        <Link href="/places" className={BUTTON}>
+          Places
+        </Link>
         <a href="https://github.com/sponsors/anishfn" target="_blank" rel="noopener noreferrer" className={`group ${BUTTON}`}>
           <Heart
             aria-hidden

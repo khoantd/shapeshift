@@ -24,8 +24,15 @@ export const viewport: Viewport = { themeColor: "#fafaf9", colorScheme: "light",
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}>
-      <body className="min-h-full bg-background font-sans text-foreground">
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <body
+        className="min-h-full bg-background font-sans text-foreground"
+        suppressHydrationWarning
+      >
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster />
       </body>

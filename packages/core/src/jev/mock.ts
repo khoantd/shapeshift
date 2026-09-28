@@ -246,6 +246,21 @@ function intentScores(raw: string): Scores {
   if (has(/\b(news|headlines?|briefing|cxo\s*feed)\b/, t)) add("news", 6.5);
   if (has(/\b(critical|must[- ]know|key takeaways?|tl;?dr)\b/, t) && has(/\b(news|updates?|stories|about|on)\b/, t)) add("news", 5);
   if (has(/\b(what'?s\s+(new|happening)|latest\s+(on|about)|catch\s+me\s+up)\b/, t)) add("news", 4);
+  // Place: address / venue / map lookup (not a trip plan)
+  if (has(/\b(address|street\s+address|map\s+pin|on\s+the\s+map|google\s+maps?)\b/, t)) add("place", 6.5);
+  if (has(/\b(where\s+is|look\s+up|locate|find\s+(?:the\s+)?(?:address|place|venue|location))\b/, t)) add("place", 5.5);
+  if (has(/\b(map\s+of|directions?\s+to|navigate\s+to|place\s+called)\b/, t)) add("place", 5);
+  if (
+    has(/\b(find|search|show)\b/, t) &&
+    has(/\b(cafe|coffee|restaurant|hotel|office|park|museum|stadium|airport|station)\b/, t) &&
+    !has(/\b(flight|trip|travel|vacation|holiday|weekend|tomorrow|next week)\b/, t)
+  ) {
+    add("place", 4);
+  }
+  // Street-like number + name without trip words
+  if (has(/\b\d{1,5}\s+[a-z]/, t) && has(/\b(st|street|ave|avenue|rd|road|blvd|drive|lane|way)\b/, t)) {
+    add("place", 6);
+  }
 
   if ((s.workout ?? 0) >= 5) {
     s.note = 0;
@@ -268,6 +283,13 @@ function intentScores(raw: string): Scores {
     s.note = 0;
     s.link = Math.min(s.link ?? 0, 1.5);
     s.todo = Math.min(s.todo ?? 0, 1.5);
+  }
+  if ((s.place ?? 0) >= 5) {
+    s.note = 0;
+    s.travel = Math.min(s.travel ?? 0, 1.5);
+    s.event = Math.min(s.event ?? 0, 2);
+    s.contact = Math.min(s.contact ?? 0, 1.5);
+    s.link = Math.min(s.link ?? 0, 1.5);
   }
   return s;
 }

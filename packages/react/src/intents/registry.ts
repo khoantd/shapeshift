@@ -38,6 +38,7 @@ import {
   Dumbbell,
   Landmark,
   Newspaper,
+  MapPin,
 } from "lucide-react";
 import type { CardIntent } from "@shapeshift/core/jev/types";
 import { formatAmount } from "@shapeshift/core/parse/common";
@@ -57,6 +58,7 @@ import { EvalCard } from "./EvalCard";
 import { GoalCard } from "./GoalCard";
 import { ModerateCard } from "./ModerateCard";
 import { NewsCard } from "./NewsCard";
+import { PlaceCard } from "./PlaceCard";
 import { RandomCard } from "./RandomCard";
 import { RecipeCard } from "./RecipeCard";
 import { RouteCard } from "./RouteCard";
@@ -414,6 +416,14 @@ export const registry: Registry = {
     summary: (d) =>
       [d.criticalOnly ? "Critical" : null, d.topic || "News", d.sourceHint].filter(Boolean).join(" · "),
     Component: NewsCard,
+  },
+  place: {
+    label: "Place",
+    example: "find address 1600 Amphitheatre Parkway",
+    icon: MapPin,
+    signals: [],
+    summary: (d) => d.query || "Place search",
+    Component: PlaceCard,
   },
   note: {
     label: "Note",
