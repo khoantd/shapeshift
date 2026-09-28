@@ -13,12 +13,14 @@
 
 ## Goal
 
-News feed filters: Read/Unread status + Newest/Oldest sort (plus prior Deep Dive VN/EN).
+Places: add person contacts with local Convex history + Lead Flow sync.
 
 ## Done
 
-- **Deep Dive language** — VN (default) / EN toggle; API `language`; persist + cache match
-- **News read/sort filters** — Status All|Unread|Read + Sort Newest|Oldest under search; URL `read=` / `sort=`; helpers in `newsFeedView.ts` (11 tests)
+- **Places → Lead Flow contacts (option B)** — Convex `placeContacts` + `POST /api/places/contacts` → `POST …/api/inbound/leads` (channel `ch-35ed1c04`)
+- UI: Add contact form + list on `PlaceDetailCard` via `PlaceContactsSection`
+- Env docs: `LEAD_FLOW_API_KEY`, `LEAD_FLOW_BASE_URL`, `LEAD_FLOW_CHANNEL_ID`
+- Tests: `apps/web/src/lib/lead-flow/*.test.ts` (10 pass)
 
 ## In progress
 
@@ -26,23 +28,28 @@ News feed filters: Read/Unread status + Newest/Oldest sort (plus prior Deep Dive
 
 ## Next
 
-1. Smoke-test News Status/Sort toggles — Unread-only, Oldest, URL round-trip (`?read=unread&sort=oldest`)
-2. Smoke-test Deep Dive VN/EN generate + regenerate
-3. Confirm Critical-only still composes with read filter
+1. Run `bunx convex dev` (or deploy) from `apps/web` so `placeContacts` schema + functions sync
+2. Ensure `NEXT_PUBLIC_CONVEX_URL` is set (same as waitlist)
+3. **Rotate** the Lead Flow API key (it was pasted in chat) and update `LEAD_FLOW_API_KEY` in `apps/web/.env`
+4. Smoke-test: open a place → Add contact → confirm Lead Flow lead + Convex list badge Synced
 
 ## Decisions
 
-- Date sort is primary (no unread-before-read); pinned still tops lists; brief score only ties equal dates when query active
-- Defaults: Status All, Sort Newest (omitted from URL)
-- `syncUrl` takes an options object including `read` / `sort`
+- Option B: local Convex history + Lead Flow sync (not push-only)
+- Single-lead endpoint `/api/inbound/leads` (not batch `lead-ingest`)
+- Client owns Convex writes; Next API owns Lead Flow secret
 
 ## Gotchas
 
-- ToggleGroup imported via `@shapeshift/react/ui/toggle-group` (deep export), not package root
-- Inspired Canvas `deep_dive` is a single JSON blob — regenerating other language overwrites
+- Without Convex URL, UI shows config hint (contacts unavailable)
+- Lead Flow requires `name`, `company` (place name), `email`, `channel_id`
+- Never commit `LEAD_FLOW_API_KEY`; rotate if exposed
 
 ## Pointers
 
 | Item | Location |
 |------|----------|
-| Key files | `apps/web/src/lib/newsFeedView.ts`, `apps/web/src/components/NewsPageClient.tsx`, `apps/web/src/lib/perplexity/deepDiveParse.ts`, `packages/react/src/intents/NewsReaderPane.tsx` |
+| Lead Flow client | `apps/web/src/lib/lead-flow/` |
+| Contacts API | `apps/web/src/app/api/places/contacts/route.ts` |
+| Convex | `apps/web/convex/placeContacts.ts`, `schema.ts` |
+| UI | `apps/web/src/components/places/PlaceContactsSection.tsx` |

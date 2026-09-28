@@ -13,9 +13,11 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as placeContacts from "../placeContacts.js";
 import type * as waitlist from "../waitlist.js";
 
 declare const fullApi: ApiFromModules<{
+  placeContacts: typeof placeContacts;
   waitlist: typeof waitlist;
 }>;
 

@@ -3,6 +3,7 @@
 import { Clock, ExternalLink, Globe, Phone, Star, X } from "lucide-react";
 import { shortenOpenState } from "@/lib/places/format";
 import type { PlaceDetails, PlacesProvider } from "@/lib/places/types";
+import { PlaceContactsSection } from "./PlaceContactsSection";
 
 type PlaceDetailCardProps = {
   place: PlaceDetails;
@@ -45,7 +46,7 @@ export function PlaceDetailCard({
     <article
       className={
         isMap
-          ? "flex max-h-[min(42vh,360px)] flex-col overflow-hidden rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur-sm"
+          ? "flex max-h-[min(52vh,480px)] flex-col overflow-hidden rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur-sm"
           : "rounded-md border border-border bg-card px-3 py-3 shadow-xs"
       }
     >
@@ -205,6 +206,8 @@ export function PlaceDetailCard({
             </ul>
           </div>
         )}
+
+        <PlaceContactsSection place={place} compact={isMap} />
       </div>
     </article>
   );
