@@ -20,6 +20,48 @@ export const listByPlaceId = query({
 });
 
 /**
+ * Unique places that have at least one contact, newest activity first.
+ * Used by Places `/contact` category filter.
+ */
+export const listPlacesWithContacts = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("placeContacts").collect();
+
+    type PlaceAgg = {
+      placeId: string;
+      placeName: string;
+      formattedAddress?: string;
+      contactCount: number;
+      latestAt: number;
+    };
+
+    const byPlace = new Map<string, PlaceAgg>();
+    for (const row of rows) {
+      const existing = byPlace.get(row.placeId);
+      if (!existing) {
+        byPlace.set(row.placeId, {
+          placeId: row.placeId,
+          placeName: row.placeName,
+          formattedAddress: row.formattedAddress,
+          contactCount: 1,
+          latestAt: row.createdAt,
+        });
+        continue;
+      }
+      existing.contactCount += 1;
+      if (row.createdAt > existing.latestAt) {
+        existing.latestAt = row.createdAt;
+        existing.placeName = row.placeName;
+        if (row.formattedAddress) existing.formattedAddress = row.formattedAddress;
+      }
+    }
+
+    return [...byPlace.values()].sort((a, b) => b.latestAt - a.latestAt);
+  },
+});
+
+/**
  * Always inserts a new contact for the place (one place → many contacts).
  * Sets syncStatus to pending so the client can push to Lead Flow.
  */

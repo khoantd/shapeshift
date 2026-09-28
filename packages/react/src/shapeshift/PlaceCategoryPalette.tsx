@@ -1,12 +1,14 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { MapPin, Users, type LucideIcon } from "lucide-react";
 import { useMemo } from "react";
 
 export type PlaceCategoryOption = {
   name: string;
   /** Hint shown to the right of the category name. */
   example: string;
+  /** Optional row icon; defaults to MapPin. */
+  icon?: LucideIcon;
 };
 
 /**
@@ -56,6 +58,7 @@ export function PlaceCategoryPalette({
         ) : (
           visible.map((category, i) => {
             const active = i === activeIndex;
+            const Icon = category.icon ?? MapPin;
             return (
               <li key={category.name} role="presentation">
                 <button
@@ -71,7 +74,7 @@ export function PlaceCategoryPalette({
                   }`}
                 >
                   <span className="grid size-8 shrink-0 place-items-center rounded-sm bg-secondary text-foreground">
-                    <MapPin className="size-[18px]" aria-hidden />
+                    <Icon className="size-[18px]" aria-hidden />
                   </span>
                   <span className="w-24 shrink-0 truncate text-[14px] font-medium">
                     {category.name}

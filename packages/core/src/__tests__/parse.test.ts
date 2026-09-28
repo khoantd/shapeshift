@@ -684,6 +684,7 @@ describe("news", () => {
 
 import {
   composePlacesSearchQuery,
+  isContactCategory,
   parsePlace,
   parsePlaceSlash,
   placeDataFromSlashPick,
@@ -773,10 +774,29 @@ describe("place slash", () => {
     });
   });
 
+  test("contact category match", () => {
+    expect(parsePlaceSlash("/contact")).toEqual({
+      isSlash: true,
+      filterQuery: "contact",
+      category: "contact",
+      query: "",
+      matched: true,
+    });
+    expect(parsePlaceSlash("/contact coffee")).toMatchObject({
+      category: "contact",
+      query: "Coffee",
+      matched: true,
+    });
+  });
+
   test("placeDataFromSlashPick", () => {
     expect(placeDataFromSlashPick("tourism", "museum")).toEqual({
       query: "Museum",
       category: "tourism",
+    });
+    expect(placeDataFromSlashPick("contact", "")).toEqual({
+      query: "",
+      category: "contact",
     });
   });
 
@@ -792,12 +812,23 @@ describe("place slash", () => {
     expect(composePlacesSearchQuery("shop", "blue bottle cafe")).toBe(
       "blue bottle cafe",
     );
+    // Contact meta-filter: never append "contact" to Maps query.
+    expect(composePlacesSearchQuery("contact", "")).toBe("");
+    expect(composePlacesSearchQuery("contact", "coffee")).toBe("coffee");
+  });
+
+  test("isContactCategory", () => {
+    expect(isContactCategory("contact")).toBe(true);
+    expect(isContactCategory("Contact")).toBe(true);
+    expect(isContactCategory("shop")).toBe(false);
+    expect(isContactCategory(null)).toBe(false);
   });
 
   test("known categories list", () => {
     expect(PLACE_CATEGORIES).toContain("shop");
     expect(PLACE_CATEGORIES).toContain("commercial");
-    expect(PLACE_CATEGORIES).toHaveLength(10);
+    expect(PLACE_CATEGORIES).toContain("contact");
+    expect(PLACE_CATEGORIES).toHaveLength(11);
   });
 });
 

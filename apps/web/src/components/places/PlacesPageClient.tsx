@@ -2,6 +2,7 @@
 
 import {
   composePlacesSearchQuery,
+  isContactCategory,
   isPlaceCategory,
   parsePlaceSlash,
   placeDataFromSlashPick,
@@ -13,11 +14,13 @@ import {
   filterPlaceCategories,
   type PlaceCategoryOption,
 } from "@shapeshift/react";
-import { ArrowLeft, LocateFixed, MapPin, Search, Star, X } from "lucide-react";
+import { useQuery } from "convex/react";
+import { ArrowLeft, LocateFixed, MapPin, Search, Star, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useId,
   useMemo,
@@ -25,6 +28,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { api } from "../../../convex/_generated/api";
 import type {
   MapTilesProvider,
   PlaceDetails,
@@ -34,9 +38,9 @@ import type {
 import { shortenOpenState } from "@/lib/places/format";
 import { RESULTS_PAGE_SIZE } from "@/lib/places/serpapi-search";
 import { useUserLocation } from "@/lib/places/useUserLocation";
+import { isConvexConfigured } from "../ConvexClientProvider";
 import { PlaceDetailCard } from "./PlaceDetailCard";
 import { PlacesMap } from "./PlacesMap";
-
 type PlacesPageClientProps = {
   provider: PlacesProvider;
   mapTiles: MapTilesProvider | null;
@@ -74,13 +78,68 @@ const CATEGORY_EXAMPLES: Record<PlaceCategory, string> = {
   service: "salon, repair…",
   company: "business, HQ…",
   commercial: "mall, market…",
+  contact: "saved people…",
 };
 
 const CATEGORY_OPTIONS: PlaceCategoryOption[] = PLACE_CATEGORIES.map((name) => ({
   name,
   example: CATEGORY_EXAMPLES[name],
+  ...(name === "contact" ? { icon: Users } : {}),
 }));
 
+type ContactPlaceRow = {
+  placeId: string;
+  placeName: string;
+  formattedAddress?: string;
+  contactCount: number;
+};
+
+function contactRowsToPredictions(
+  rows: ContactPlaceRow[],
+  keywords: string,
+): PlacePrediction[] {
+  const needle = keywords.trim().toLowerCase();
+  const filtered = needle
+    ? rows.filter((row) => {
+        const hay = `${row.placeName} ${row.formattedAddress ?? ""}`.toLowerCase();
+        return hay.includes(needle);
+      })
+    : rows;
+
+  return filtered.map((row) => ({
+    placeId: row.placeId,
+    mainText: row.placeName,
+    secondaryText:
+      row.formattedAddress?.trim() ||
+      `${row.contactCount} contact${row.contactCount === 1 ? "" : "s"}`,
+  }));
+}
+
+/**
+ * Loads Convex places-with-contacts into the parent results list.
+ * Mount only when Convex is configured (useQuery needs a provider).
+ */
+function ContactPlacesBridge({
+  keywords,
+  onChange,
+}: {
+  keywords: string;
+  onChange: (next: { predictions: PlacePrediction[]; busy: boolean }) => void;
+}) {
+  const rows = useQuery(api.placeContacts.listPlacesWithContacts);
+  const deferredKeywords = useDeferredValue(keywords);
+  const predictions = useMemo(
+    () => (rows ? contactRowsToPredictions(rows, deferredKeywords) : []),
+    [rows, deferredKeywords],
+  );
+  const busy = rows === undefined;
+
+  useEffect(() => {
+    onChange({ predictions, busy });
+  }, [predictions, busy, onChange]);
+
+  return null;
+}
 function keywordsAfterCategory(filterQuery: string, categoryName: string): string {
   const rest = filterQuery.trim();
   const lower = rest.toLowerCase();
@@ -152,12 +211,28 @@ export function PlacesPageClient({
   );
 
   const keywordsQuery = query.startsWith("/") ? "" : query.trim();
+  const isContactMode = isContactCategory(category);
+  const contactConvexReady = isContactMode && isConvexConfigured();
   const searchQuery = composePlacesSearchQuery(category, keywordsQuery);
   const trimmedQuery = keywordsQuery;
-  const showResultsPanel = serverConfigured && searchQuery.length >= 2;
+  const showResultsPanel =
+    serverConfigured &&
+    (isContactMode || searchQuery.length >= 2);
   // Round so GPS watch jitter does not re-fire autocomplete.
   const biasLat = userLocation ? Math.round(userLocation.lat * 1e3) / 1e3 : null;
   const biasLng = userLocation ? Math.round(userLocation.lng * 1e3) / 1e3 : null;
+
+  const onContactPlacesChange = useCallback(
+    (next: { predictions: PlacePrediction[]; busy: boolean }) => {
+      setPredictions(next.predictions);
+      setSearchBusy(next.busy);
+      setNextStart(null);
+      setDisplayLimit(RESULTS_PAGE_SIZE);
+      setSearchError(null);
+      setActiveIndex(-1);
+    },
+    [],
+  );
 
   const onLocateClick = () => {
     locate();
@@ -299,6 +374,7 @@ export function PlacesPageClient({
   // Debounced autocomplete (clearing short queries happens in onChange)
   useEffect(() => {
     if (!serverConfigured) return;
+    if (isContactMode) return;
     if (query.startsWith("/")) return;
     const q = searchQuery.trim();
     if (q.length < 2) return;
@@ -348,7 +424,16 @@ export function PlacesPageClient({
     return () => {
       clearTimeout(timer);
     };
-  }, [query, searchQuery, serverConfigured, biasLat, biasLng]);
+  }, [query, searchQuery, serverConfigured, biasLat, biasLng, isContactMode]);
+
+  // Contact mode without Convex: clear Maps results and show config hint.
+  useEffect(() => {
+    if (!isContactMode || contactConvexReady) return;
+    setPredictions([]);
+    setSearchBusy(false);
+    setNextStart(null);
+    setSearchError(null);
+  }, [isContactMode, contactConvexReady]);
 
   const visiblePredictions = useMemo(
     () => predictions.slice(0, displayLimit),
@@ -356,6 +441,7 @@ export function PlacesPageClient({
   );
 
   const canLoadMore =
+    !isContactMode &&
     !searchBusy &&
     (displayLimit < predictions.length || nextStart != null);
 
@@ -590,12 +676,15 @@ export function PlacesPageClient({
     !selected &&
     !detailsBusy &&
     !detailsError &&
-    !query.startsWith("/");
+    !query.startsWith("/") &&
+    !isContactMode;
   const showNoResults =
     showResultsPanel &&
     !searchBusy &&
     !searchError &&
-    predictions.length === 0;
+    predictions.length === 0 &&
+    (!isContactMode || contactConvexReady);
+  const showContactConvexHint = isContactMode && !isConvexConfigured();
 
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:flex-row lg:overflow-hidden">
@@ -619,8 +708,9 @@ export function PlacesPageClient({
               </h1>
               <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
                 Type a name or address, or{" "}
-                <span className="font-medium text-ink-2">/shop coffee</span> to
-                filter by category — then pick from the list or map.
+                <span className="font-medium text-ink-2">/shop coffee</span> or{" "}
+                <span className="font-medium text-ink-2">/contact</span> to
+                filter — then pick from the list or map.
               </p>
             </div>
           </div>
@@ -656,7 +746,7 @@ export function PlacesPageClient({
               value={query}
               onChange={(e) => onSearchChange(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Name, address, or /shop…"
+              placeholder="Name, address, or /shop… /contact"
               role="combobox"
               aria-expanded={paletteOpen || showResultsPanel}
               aria-controls={paletteOpen ? categoryListboxId : listboxId}
@@ -690,14 +780,34 @@ export function PlacesPageClient({
             />
           </div>
 
+          {contactConvexReady && (
+            <ContactPlacesBridge
+              keywords={keywordsQuery}
+              onChange={onContactPlacesChange}
+            />
+          )}
+
           {category && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[12px] text-ink-2">
-                Category: <span className="font-medium">{category}</span>
+                {isContactMode ? (
+                  <>
+                    <Users className="size-3.5 shrink-0" aria-hidden />
+                    Contacts
+                  </>
+                ) : (
+                  <>
+                    Category: <span className="font-medium">{category}</span>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={clearCategory}
-                  aria-label={`Clear ${category} category`}
+                  aria-label={
+                    isContactMode
+                      ? "Clear contacts filter"
+                      : `Clear ${category} category`
+                  }
                   className="inline-flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                 >
                   <X className="size-3.5" aria-hidden />
@@ -712,7 +822,7 @@ export function PlacesPageClient({
             <div className="flex shrink-0 flex-col gap-2">
               <div className="flex items-baseline justify-between gap-2">
                 <h2 className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-                  Results
+                  {isContactMode ? "Places with contacts" : "Results"}
                 </h2>
                 {!searchBusy && predictions.length > 0 && (
                   <p className="text-[12px] text-muted-foreground">
@@ -744,9 +854,20 @@ export function PlacesPageClient({
                     {searchError}
                   </li>
                 )}
+                {showContactConvexHint && (
+                  <li className="px-3 py-3 text-[13px] leading-5 text-muted-foreground" role="status">
+                    Contacts need Convex. Set{" "}
+                    <code className="text-[11px]">NEXT_PUBLIC_CONVEX_URL</code>{" "}
+                    and restart the dev server.
+                  </li>
+                )}
                 {showNoResults && (
                   <li className="px-3 py-3 text-[13px] text-muted-foreground" role="status">
-                    No results. Try a shop, business, or street name.
+                    {isContactMode
+                      ? keywordsQuery
+                        ? "No matching places with contacts."
+                        : "No places with contacts yet. Open a place and add a contact."
+                      : "No results. Try a shop, business, or street name."}
                   </li>
                 )}
                 {visiblePredictions.map((p, i) => {
@@ -780,6 +901,13 @@ export function PlacesPageClient({
                             className="mt-0.5 size-10 shrink-0 rounded-md object-cover"
                             loading="lazy"
                             referrerPolicy="no-referrer"
+                          />
+                        ) : isContactMode ? (
+                          <Users
+                            className={`mt-0.5 size-4 shrink-0 ${
+                              isSelected ? "text-foreground" : "text-muted-foreground"
+                            }`}
+                            aria-hidden
                           />
                         ) : (
                           <MapPin
@@ -843,7 +971,8 @@ export function PlacesPageClient({
                 Search shops and places
               </p>
               <p className="mt-1 text-[13px] text-muted-foreground">
-                Start typing a name, or use /shop coffee to filter by category.
+                Start typing a name, or use /shop coffee or /contact to filter by
+                category.
               </p>
               {locationStatus === "ready" && (
                 <p className="mt-2 text-[12px] text-muted-foreground">

@@ -13,7 +13,7 @@
 
 ## Goal
 
-Places: add person contacts with local Convex history + Lead Flow sync.
+Places: `/contact` category lists places that have saved Convex contacts.
 
 ## Done
 
@@ -22,6 +22,7 @@ Places: add person contacts with local Convex history + Lead Flow sync.
 - Env docs: `LEAD_FLOW_API_KEY`, `LEAD_FLOW_BASE_URL`, `LEAD_FLOW_CHANNEL_ID`
 - Tests: `apps/web/src/lib/lead-flow/*.test.ts` (10 pass)
 - **Fix:** lift `ConvexClientProvider` to root `app/layout.tsx` so `/places` `useQuery` has a Convex client (was only on waitlist `page.tsx`)
+- **Places `/contact` category** — `PLACE_CATEGORIES` includes `contact`; Convex `listPlacesWithContacts`; `PlacesPageClient` skips Maps autocomplete and loads unique contact places; palette `Users` icon; empty/config states
 
 ## In progress
 
@@ -29,20 +30,20 @@ Places: add person contacts with local Convex history + Lead Flow sync.
 
 ## Next
 
-1. Restart Next (`bun run dev`) so it picks up `.env.local` → local Convex `http://127.0.0.1:3210`
-2. Smoke-test: open a place → Add contact → confirm Lead Flow lead + Convex list badge Synced
-3. To sync the **cloud** deployment (`brazen-dinosaur-465`): `npx convex login` then `npx convex dev --configure=existing` (or `convex deploy`)
-4. **Rotate** the Lead Flow API key (it was pasted in chat) and update `LEAD_FLOW_API_KEY` in `apps/web/.env`
+1. Smoke-test: `/places` → type `/contact` → pick category → list places with contacts → select one → detail + contacts section
+2. Optional keyword filter while in contact mode (name/address substring)
+3. Keep local `convex dev` on `:3210` via `.env.local`; rotate Lead Flow API key if still exposed
 
 ## Decisions
 
 - Option B: local Convex history + Lead Flow sync (not push-only)
 - Single-lead endpoint `/api/inbound/leads` (not batch `lead-ingest`)
 - Client owns Convex writes; Next API owns Lead Flow secret
+- `contact` is a meta category (Convex filter), not Maps text search — `composePlacesSearchQuery` never appends `"contact"`
 
 ## Gotchas
 
-- Without Convex URL, UI shows config hint (contacts unavailable)
+- Without Convex URL, contact category shows config hint (contacts unavailable)
 - Lead Flow requires `name`, `company` (place name), `email`, `channel_id`
 - Never commit `LEAD_FLOW_API_KEY`; rotate if exposed
 - Cloud `brazen-dinosaur-465` lacked `placeContacts` until push; local `convex dev` is running on `:3210` via `.env.local` (overrides `.env`). Keep that process up while developing. Cloud push needs `npx convex login`.
@@ -55,3 +56,5 @@ Places: add person contacts with local Convex history + Lead Flow sync.
 | Contacts API | `apps/web/src/app/api/places/contacts/route.ts` |
 | Convex | `apps/web/convex/placeContacts.ts`, `schema.ts` |
 | UI | `apps/web/src/components/places/PlaceContactsSection.tsx` |
+| Contact category | `packages/core/src/parse/place.ts`, `PlacesPageClient.tsx` |
+| Palette | `packages/react/src/shapeshift/PlaceCategoryPalette.tsx` |

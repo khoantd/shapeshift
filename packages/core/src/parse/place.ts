@@ -12,9 +12,18 @@ export const PLACE_CATEGORIES = [
   "service",
   "company",
   "commercial",
+  /** Meta filter: places with saved person contacts (Convex), not Maps text search. */
+  "contact",
 ] as const;
 
 export type PlaceCategory = (typeof PLACE_CATEGORIES)[number];
+
+/** True when category loads Convex contact places instead of Maps autocomplete. */
+export function isContactCategory(
+  category: PlaceCategory | string | null | undefined,
+): boolean {
+  return (category ?? "").trim().toLowerCase() === "contact";
+}
 
 export type PlaceData = {
   /** Free-text query to search in Google Places. */
@@ -140,6 +149,8 @@ export function composePlacesSearchQuery(
 ): string {
   const q = collapse(keywords);
   const cat = (category ?? "").trim().toLowerCase();
+  // Contact is a Convex filter — never append it as Maps search text.
+  if (isContactCategory(cat)) return q;
   if (q && cat) {
     const isShortSingleToken = !/\s/.test(q);
     return isShortSingleToken ? `${q} ${cat}` : q;
