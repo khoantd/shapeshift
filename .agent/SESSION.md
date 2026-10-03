@@ -6,23 +6,27 @@
 
 | Field | Value |
 |-------|-------|
-| **Updated** | 2026-09-28 |
+| **Updated** | 2026-10-03 |
 | **Phase** | build |
 | **Tool** | cursor |
 | **Persona** | _(optional)_ |
 
 ## Goal
 
-Places: `/contact` category lists places that have saved Convex contacts.
+Polish Places pin UX (toast, list unpin, empty state, OSM brand markers) — keep Pin + `/pinned`.
 
 ## Done
 
-- **Places → Lead Flow contacts (option B)** — Convex `placeContacts` + `POST /api/places/contacts` → `POST …/api/inbound/leads` (channel `ch-35ed1c04`)
-- UI: Add contact form + list on `PlaceDetailCard` via `PlaceContactsSection`
-- Env docs: `LEAD_FLOW_API_KEY`, `LEAD_FLOW_BASE_URL`, `LEAD_FLOW_CHANNEL_ID`
-- Tests: `apps/web/src/lib/lead-flow/*.test.ts` (10 pass)
-- **Fix:** lift `ConvexClientProvider` to root `app/layout.tsx` so `/places` `useQuery` has a Convex client (was only on waitlist `page.tsx`)
-- **Places `/contact` category** — `PLACE_CATEGORIES` includes `contact`; Convex `listPlacesWithContacts`; `PlacesPageClient` skips Maps autocomplete and loads unique contact places; palette `Users` icon; empty/config states
+- **Pin UX polish** — `notify` toast on pin/unpin (View → `/pinned`); list-row unpin in pinned mode; dashed empty panel + Search places CTA; OSM `markerAccent="pinned"` brand markers
+- **Places pin** — Convex `placePins` table + `placePins.ts` (`listPinned`, `isPinned`, `pin`, `unpin`, `toggle`)
+- Core: `pinned` in `PLACE_CATEGORIES`; `isPinnedCategory` / `isConvexPlaceCategory`; compose never appends meta cats
+- UI: `PlacePinButton` on `PlaceDetailCard`; `PinnedPlacesBridge` + `/pinned` palette in `PlacesPageClient`
+- Docs: `FEATURES.md` + waitlist copy mention pin / `/pinned`
+- Tests: place parse suite (pinned category) pass; `apps/web` typecheck pass
+- **Convex push (2026-10-03)** — `convex dev --once` → `brazen-dinosaur-465`; `placePins.by_placeId` index added
+- **Convex prod deploy (2026-10-03)** — `convex deploy` → `jovial-weasel-546`; `placePins.by_placeId` live on production
+- **Vercel prod (2026-10-03)** — `vercel --prod` → aliased https://shapeshift-bay.vercel.app; Pin UI (pin changes still uncommitted on `main`)
+- Prior: Places contacts / Lead Flow / `/contact` category (see earlier SESSION history)
 
 ## In progress
 
@@ -30,31 +34,36 @@ Places: `/contact` category lists places that have saved Convex contacts.
 
 ## Next
 
-1. Smoke-test: `/places` → type `/contact` → pick category → list places with contacts → select one → detail + contacts section
-2. Optional keyword filter while in contact mode (name/address substring)
-3. Keep local `convex dev` on `:3210` via `.env.local`; rotate Lead Flow API key if still exposed
+1. Manual QA: pin → toast + View → `/pinned` → unpin from row → empty CTA → OSM brand markers in pinned mode
+2. Commit + push pin + polish to `origin/main` so Git-linked deploys stay in sync (still uncommitted locally)
+3. Human: resolve Company Brain conflicts / promote proposed Shapeshift docs if still open
+4. Rotate Lead Flow API key if still exposed
 
 ## Decisions
 
-- Option B: local Convex history + Lead Flow sync (not push-only)
-- Single-lead endpoint `/api/inbound/leads` (not batch `lead-ingest`)
-- Client owns Convex writes; Next API owns Lead Flow secret
-- `contact` is a meta category (Convex filter), not Maps text search — `composePlacesSearchQuery` never appends `"contact"`
+- Pins use Convex (same shared no-auth model as `placeContacts`), not localStorage
+- Lucide `Pin` + News-style `aria-pressed` (not Bookmark); polish keeps Pin naming
+- Toast via existing `@shapeshift/react` `notify` (Sonner); no new toast stack
+- `pinned` is a meta category like `contact` — skips Maps autocomplete
+- Preserve existing Places chrome (no new design-system orange palette)
+- OSM only for prediction marker accent; MapTiler/Google unchanged
 
 ## Gotchas
 
-- Without Convex URL, contact category shows config hint (contacts unavailable)
-- Lead Flow requires `name`, `company` (place name), `email`, `channel_id`
-- Never commit `LEAD_FLOW_API_KEY`; rotate if exposed
-- Cloud `brazen-dinosaur-465` lacked `placeContacts` until push; local `convex dev` is running on `:3210` via `.env.local` (overrides `.env`). Keep that process up while developing. Cloud push needs `npx convex login`.
+- Without Convex URL, pin control is hidden; `/pinned` shows config hint
+- `bunx convex codegen` may need network/login; `_generated/api.d.ts` was updated to include `placePins`
+- Schema must be pushed (`convex dev` / `convex deploy`) before pin mutations work against a remote deployment
+- Local `convex dev` on `:3210` via `.env.local` overrides `.env` when developing
 
 ## Pointers
 
 | Item | Location |
 |------|----------|
-| Lead Flow client | `apps/web/src/lib/lead-flow/` |
-| Contacts API | `apps/web/src/app/api/places/contacts/route.ts` |
-| Convex | `apps/web/convex/placeContacts.ts`, `schema.ts` |
-| UI | `apps/web/src/components/places/PlaceContactsSection.tsx` |
-| Contact category | `packages/core/src/parse/place.ts`, `PlacesPageClient.tsx` |
-| Palette | `packages/react/src/shapeshift/PlaceCategoryPalette.tsx` |
+| Convex pins | `apps/web/convex/placePins.ts`, `schema.ts` |
+| Pin button | `apps/web/src/components/places/PlacePinButton.tsx` |
+| Detail card | `apps/web/src/components/places/PlaceDetailCard.tsx` |
+| Places page | `apps/web/src/components/places/PlacesPageClient.tsx` |
+| OSM markers | `apps/web/src/components/places/OsmPlacesMap.tsx`, `PlacesMap.tsx` |
+| Category parse | `packages/core/src/parse/place.ts` |
+| Features doc | `FEATURES.md` |
+| Contacts (related) | `apps/web/convex/placeContacts.ts`, `PlaceContactsSection.tsx` |

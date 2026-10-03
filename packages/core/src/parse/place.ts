@@ -14,6 +14,8 @@ export const PLACE_CATEGORIES = [
   "commercial",
   /** Meta filter: places with saved person contacts (Convex), not Maps text search. */
   "contact",
+  /** Meta filter: user-pinned places (Convex), not Maps text search. */
+  "pinned",
 ] as const;
 
 export type PlaceCategory = (typeof PLACE_CATEGORIES)[number];
@@ -23,6 +25,20 @@ export function isContactCategory(
   category: PlaceCategory | string | null | undefined,
 ): boolean {
   return (category ?? "").trim().toLowerCase() === "contact";
+}
+
+/** True when category loads Convex pinned places instead of Maps autocomplete. */
+export function isPinnedCategory(
+  category: PlaceCategory | string | null | undefined,
+): boolean {
+  return (category ?? "").trim().toLowerCase() === "pinned";
+}
+
+/** Meta categories that load from Convex instead of Maps autocomplete. */
+export function isConvexPlaceCategory(
+  category: PlaceCategory | string | null | undefined,
+): boolean {
+  return isContactCategory(category) || isPinnedCategory(category);
 }
 
 export type PlaceData = {
@@ -149,8 +165,8 @@ export function composePlacesSearchQuery(
 ): string {
   const q = collapse(keywords);
   const cat = (category ?? "").trim().toLowerCase();
-  // Contact is a Convex filter — never append it as Maps search text.
-  if (isContactCategory(cat)) return q;
+  // Convex meta-filters — never append as Maps search text.
+  if (isConvexPlaceCategory(cat)) return q;
   if (q && cat) {
     const isShortSingleToken = !/\s/.test(q);
     return isShortSingleToken ? `${q} ${cat}` : q;

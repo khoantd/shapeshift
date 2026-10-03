@@ -22,6 +22,13 @@ const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>';
 
+/** Default search/selection pin (Maps red). */
+const MARKER_COLOR_DEFAULT = "#ea4335";
+/** Brand blue for `/pinned` prediction markers (`--brand`). */
+const MARKER_COLOR_PINNED = "#3b5bdb";
+
+export type MarkerAccent = "default" | "pinned";
+
 type OsmPlacesMapProps = {
   place: PlaceDetails | null;
   predictions?: PlacePrediction[];
@@ -29,6 +36,8 @@ type OsmPlacesMapProps = {
   /** When this counter changes, pan to the user location (locate button). */
   locateRequestId?: number;
   onSelectPrediction?: (prediction: PlacePrediction) => void;
+  /** Distinct color for pinned-list markers on the OSM map. */
+  markerAccent?: MarkerAccent;
 };
 
 type LeafletNS = typeof import("leaflet");
@@ -55,11 +64,16 @@ function pinIcon(L: LeafletNS, color: string, size: "sm" | "lg") {
   });
 }
 
+function markerColor(accent: MarkerAccent): string {
+  return accent === "pinned" ? MARKER_COLOR_PINNED : MARKER_COLOR_DEFAULT;
+}
+
 function syncSelectedMarker(
   L: LeafletNS,
   map: LeafletMap,
   markerRef: MutableRefObject<Marker | null>,
   place: PlaceDetails | null,
+  accent: MarkerAccent = "default",
 ) {
   if (!place) {
     markerRef.current?.remove();
@@ -69,7 +83,7 @@ function syncSelectedMarker(
 
   const latLng: LatLngExpression = [place.lat, place.lng];
   map.setView(latLng, SELECTED_ZOOM);
-  const icon = pinIcon(L, "#ea4335", "lg");
+  const icon = pinIcon(L, markerColor(accent), "lg");
   if (!markerRef.current) {
     markerRef.current = L.marker(latLng, { icon, zIndexOffset: 600 })
       .bindTooltip(place.name, { permanent: false, direction: "top" })
@@ -89,6 +103,7 @@ function syncPredictionMarkers(
   selectedId: string | null,
   onSelect?: (prediction: PlacePrediction) => void,
   userLocation?: UserCoords | null,
+  accent: MarkerAccent = "default",
 ) {
   for (const m of layerRef.current) m.remove();
   layerRef.current = [];
@@ -101,7 +116,7 @@ function syncPredictionMarkers(
   );
   if (!withCoords.length) return;
 
-  const icon = pinIcon(L, "#ea4335", "sm");
+  const icon = pinIcon(L, markerColor(accent), "sm");
   const points: LatLngExpression[] = [];
   for (const p of withCoords) {
     const latLng: LatLngExpression = [p.lat!, p.lng!];
@@ -193,6 +208,7 @@ export function OsmPlacesMap({
   userLocation = null,
   locateRequestId = 0,
   onSelectPrediction,
+  markerAccent = "default",
 }: OsmPlacesMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -205,12 +221,14 @@ export function OsmPlacesMap({
   const predictionsRef = useRef(predictions);
   const userLocationRef = useRef(userLocation);
   const onSelectRef = useRef(onSelectPrediction);
+  const markerAccentRef = useRef(markerAccent);
   const hasCenteredOnUser = useRef(false);
   const lastLocateRequestId = useRef(locateRequestId);
   placeRef.current = place;
   predictionsRef.current = predictions;
   userLocationRef.current = userLocation;
   onSelectRef.current = onSelectPrediction;
+  markerAccentRef.current = markerAccent;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -245,8 +263,15 @@ export function OsmPlacesMap({
         placeRef.current?.placeId ?? null,
         onSelect,
         userLocationRef.current,
+        markerAccentRef.current,
       );
-      syncSelectedMarker(L, map, markerRef, placeRef.current);
+      syncSelectedMarker(
+        L,
+        map,
+        markerRef,
+        placeRef.current,
+        markerAccentRef.current,
+      );
       syncUserLocation(L, map, userMarkerRef, userAccuracyRef, userLocationRef.current, {
         pan: !hasPlace && !hasPredictions && Boolean(userLocationRef.current),
       });
@@ -290,8 +315,9 @@ export function OsmPlacesMap({
       place?.placeId ?? null,
       onSelect,
       userLocation,
+      markerAccent,
     );
-    syncSelectedMarker(L, map, markerRef, place);
+    syncSelectedMarker(L, map, markerRef, place, markerAccent);
 
     const locatePressed = locateRequestId !== lastLocateRequestId.current;
     if (locatePressed) lastLocateRequestId.current = locateRequestId;
@@ -319,7 +345,7 @@ export function OsmPlacesMap({
       map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
       hasCenteredOnUser.current = false;
     }
-  }, [place, predictions, userLocation, locateRequestId]);
+  }, [place, predictions, userLocation, locateRequestId, markerAccent]);
 
   return (
     <div

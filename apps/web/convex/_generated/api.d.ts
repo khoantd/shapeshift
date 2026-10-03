@@ -9,6 +9,7 @@
  */
 
 import type * as placeContacts from "../placeContacts.js";
+import type * as placePins from "../placePins.js";
 import type * as waitlist from "../waitlist.js";
 
 import type {
@@ -19,6 +20,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   placeContacts: typeof placeContacts;
+  placePins: typeof placePins;
   waitlist: typeof waitlist;
 }>;
 

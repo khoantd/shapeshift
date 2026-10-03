@@ -24,6 +24,8 @@ const OsmPlacesMap = dynamic(
   },
 );
 
+type MarkerAccent = "default" | "pinned";
+
 type PlacesMapProps = {
   /** Search/geocode provider (drives copy); map tiles may differ for SerpAPI. */
   provider: PlacesProvider;
@@ -37,6 +39,8 @@ type PlacesMapProps = {
   locateRequestId?: number;
   /** Called when the user clicks a prediction pin on the OSM map. */
   onSelectPrediction?: (prediction: PlacePrediction) => void;
+  /** Brand-colored markers when listing `/pinned` on OSM. */
+  markerAccent?: MarkerAccent;
 };
 
 export function PlacesMap({
@@ -48,6 +52,7 @@ export function PlacesMap({
   userLocation = null,
   locateRequestId = 0,
   onSelectPrediction,
+  markerAccent = "default",
 }: PlacesMapProps) {
   if (mapTiles === "maptiler") {
     return (
@@ -77,6 +82,7 @@ export function PlacesMap({
       userLocation={userLocation}
       locateRequestId={locateRequestId}
       onSelectPrediction={onSelectPrediction}
+      markerAccent={markerAccent}
     />
   );
 }

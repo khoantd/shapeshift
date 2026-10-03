@@ -685,6 +685,8 @@ describe("news", () => {
 import {
   composePlacesSearchQuery,
   isContactCategory,
+  isConvexPlaceCategory,
+  isPinnedCategory,
   parsePlace,
   parsePlaceSlash,
   placeDataFromSlashPick,
@@ -789,6 +791,21 @@ describe("place slash", () => {
     });
   });
 
+  test("pinned category match", () => {
+    expect(parsePlaceSlash("/pinned")).toEqual({
+      isSlash: true,
+      filterQuery: "pinned",
+      category: "pinned",
+      query: "",
+      matched: true,
+    });
+    expect(parsePlaceSlash("/pinned coffee")).toMatchObject({
+      category: "pinned",
+      query: "Coffee",
+      matched: true,
+    });
+  });
+
   test("placeDataFromSlashPick", () => {
     expect(placeDataFromSlashPick("tourism", "museum")).toEqual({
       query: "Museum",
@@ -797,6 +814,10 @@ describe("place slash", () => {
     expect(placeDataFromSlashPick("contact", "")).toEqual({
       query: "",
       category: "contact",
+    });
+    expect(placeDataFromSlashPick("pinned", "")).toEqual({
+      query: "",
+      category: "pinned",
     });
   });
 
@@ -812,9 +833,11 @@ describe("place slash", () => {
     expect(composePlacesSearchQuery("shop", "blue bottle cafe")).toBe(
       "blue bottle cafe",
     );
-    // Contact meta-filter: never append "contact" to Maps query.
+    // Convex meta-filters: never append to Maps query.
     expect(composePlacesSearchQuery("contact", "")).toBe("");
     expect(composePlacesSearchQuery("contact", "coffee")).toBe("coffee");
+    expect(composePlacesSearchQuery("pinned", "")).toBe("");
+    expect(composePlacesSearchQuery("pinned", "coffee")).toBe("coffee");
   });
 
   test("isContactCategory", () => {
@@ -824,11 +847,25 @@ describe("place slash", () => {
     expect(isContactCategory(null)).toBe(false);
   });
 
+  test("isPinnedCategory", () => {
+    expect(isPinnedCategory("pinned")).toBe(true);
+    expect(isPinnedCategory("Pinned")).toBe(true);
+    expect(isPinnedCategory("shop")).toBe(false);
+    expect(isPinnedCategory(null)).toBe(false);
+  });
+
+  test("isConvexPlaceCategory", () => {
+    expect(isConvexPlaceCategory("contact")).toBe(true);
+    expect(isConvexPlaceCategory("pinned")).toBe(true);
+    expect(isConvexPlaceCategory("shop")).toBe(false);
+  });
+
   test("known categories list", () => {
     expect(PLACE_CATEGORIES).toContain("shop");
     expect(PLACE_CATEGORIES).toContain("commercial");
     expect(PLACE_CATEGORIES).toContain("contact");
-    expect(PLACE_CATEGORIES).toHaveLength(11);
+    expect(PLACE_CATEGORIES).toContain("pinned");
+    expect(PLACE_CATEGORIES).toHaveLength(12);
   });
 });
 

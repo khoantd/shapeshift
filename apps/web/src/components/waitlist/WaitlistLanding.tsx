@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { motion, MotionConfig } from "motion/react";
-import { KeyRound, Sparkles, Type, WifiOff } from "lucide-react";
+import { KeyRound, MapPinned, Sparkles, WifiOff } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import { isConvexConfigured } from "../ConvexClientProvider";
 import { ProductPreview } from "./ProductPreview";
@@ -14,25 +14,25 @@ const FEATURES = [
     icon: Sparkles,
     title: "Morphs as you type",
     description:
-      "One text box becomes the right UI — events, checklists, timers, splits, and more — without menus or mode switches.",
+      "One text box becomes the right UI — events, checklists, places, news, splits, and thirty-plus more — without menus or mode switches.",
   },
   {
     icon: KeyRound,
     title: "Jev decides, code computes",
     description:
-      "TypeSafe AI’s Jev classifies intent in parallel. Dates, amounts, and math stay in deterministic parsers.",
+      "TypeSafe AI’s Jev classifies intent in parallel. Dates, amounts, places, and math stay in deterministic parsers.",
+  },
+  {
+    icon: MapPinned,
+    title: "Places with contacts",
+    description:
+      "Search venues on the map, pin places for later (/pinned), and save people to Lead Flow — type /contact to revisit places you’ve already captured.",
   },
   {
     icon: WifiOff,
     title: "Works offline by default",
     description:
       "A built-in keyword classifier keeps the demo useful with no API key. Plug in Jev when you want the full model.",
-  },
-  {
-    icon: Type,
-    title: "Calm, focused chrome",
-    description:
-      "Minimal surface, strong focus states, and motion that respects reduced-motion preferences.",
   },
 ] as const;
 
@@ -107,8 +107,9 @@ export function WaitlistLanding() {
               transition={{ duration: 0.45, delay: 0.16 }}
               className="mt-6 max-w-xl text-base leading-7 text-pretty text-muted-foreground sm:text-lg sm:leading-8"
             >
-              Shapeshift morphs a single text box into the right UI as you type — events, checklists,
-              timers, and more. Powered by TypeSafe AI&apos;s Jev. Join the waitlist for early access.
+              Shapeshift morphs a single text box into the right UI as you type — events, places,
+              news, checklists, and more. Powered by TypeSafe AI&apos;s Jev. Join the waitlist for
+              early access.
             </motion.p>
             <motion.div
               variants={fadeUp}
@@ -151,7 +152,8 @@ export function WaitlistLanding() {
             <div className="flex flex-col gap-3">
               <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Less chrome. More meaning.</h2>
               <p className="max-w-lg text-sm leading-6 text-muted-foreground sm:text-base">
-                Four principles, one morphing input. Everything else was deliberately left out.
+                One morphing input for planning, places, and capture. Everything else was deliberately
+                left out.
               </p>
             </div>
             <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-border/70 bg-border/70 sm:grid-cols-2">

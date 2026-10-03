@@ -3,6 +3,7 @@
 import {
   composePlacesSearchQuery,
   isContactCategory,
+  isPinnedCategory,
   isPlaceCategory,
   parsePlaceSlash,
   placeDataFromSlashPick,
@@ -15,7 +16,7 @@ import {
   type PlaceCategoryOption,
 } from "@shapeshift/react";
 import { useQuery } from "convex/react";
-import { ArrowLeft, LocateFixed, MapPin, Search, Star, Users, X } from "lucide-react";
+import { ArrowLeft, LocateFixed, MapPin, Pin, Search, Star, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -40,6 +41,7 @@ import { RESULTS_PAGE_SIZE } from "@/lib/places/serpapi-search";
 import { useUserLocation } from "@/lib/places/useUserLocation";
 import { isConvexConfigured } from "../ConvexClientProvider";
 import { PlaceDetailCard } from "./PlaceDetailCard";
+import { PlacePinButton } from "./PlacePinButton";
 import { PlacesMap } from "./PlacesMap";
 type PlacesPageClientProps = {
   provider: PlacesProvider;
@@ -79,12 +81,14 @@ const CATEGORY_EXAMPLES: Record<PlaceCategory, string> = {
   company: "business, HQ…",
   commercial: "mall, market…",
   contact: "saved people…",
+  pinned: "saved places…",
 };
 
 const CATEGORY_OPTIONS: PlaceCategoryOption[] = PLACE_CATEGORIES.map((name) => ({
   name,
   example: CATEGORY_EXAMPLES[name],
   ...(name === "contact" ? { icon: Users } : {}),
+  ...(name === "pinned" ? { icon: Pin } : {}),
 }));
 
 type ContactPlaceRow = {
@@ -92,6 +96,14 @@ type ContactPlaceRow = {
   placeName: string;
   formattedAddress?: string;
   contactCount: number;
+};
+
+type PinnedPlaceRow = {
+  placeId: string;
+  placeName: string;
+  formattedAddress?: string;
+  lat?: number;
+  lng?: number;
 };
 
 function contactRowsToPredictions(
@@ -115,6 +127,27 @@ function contactRowsToPredictions(
   }));
 }
 
+function pinnedRowsToPredictions(
+  rows: PinnedPlaceRow[],
+  keywords: string,
+): PlacePrediction[] {
+  const needle = keywords.trim().toLowerCase();
+  const filtered = needle
+    ? rows.filter((row) => {
+        const hay = `${row.placeName} ${row.formattedAddress ?? ""}`.toLowerCase();
+        return hay.includes(needle);
+      })
+    : rows;
+
+  return filtered.map((row) => ({
+    placeId: row.placeId,
+    mainText: row.placeName,
+    secondaryText: row.formattedAddress?.trim() || "Pinned",
+    ...(typeof row.lat === "number" && Number.isFinite(row.lat) ? { lat: row.lat } : {}),
+    ...(typeof row.lng === "number" && Number.isFinite(row.lng) ? { lng: row.lng } : {}),
+  }));
+}
+
 /**
  * Loads Convex places-with-contacts into the parent results list.
  * Mount only when Convex is configured (useQuery needs a provider).
@@ -130,6 +163,32 @@ function ContactPlacesBridge({
   const deferredKeywords = useDeferredValue(keywords);
   const predictions = useMemo(
     () => (rows ? contactRowsToPredictions(rows, deferredKeywords) : []),
+    [rows, deferredKeywords],
+  );
+  const busy = rows === undefined;
+
+  useEffect(() => {
+    onChange({ predictions, busy });
+  }, [predictions, busy, onChange]);
+
+  return null;
+}
+
+/**
+ * Loads Convex pinned places into the parent results list.
+ * Mount only when Convex is configured (useQuery needs a provider).
+ */
+function PinnedPlacesBridge({
+  keywords,
+  onChange,
+}: {
+  keywords: string;
+  onChange: (next: { predictions: PlacePrediction[]; busy: boolean }) => void;
+}) {
+  const rows = useQuery(api.placePins.listPinned);
+  const deferredKeywords = useDeferredValue(keywords);
+  const predictions = useMemo(
+    () => (rows ? pinnedRowsToPredictions(rows, deferredKeywords) : []),
     [rows, deferredKeywords],
   );
   const busy = rows === undefined;
@@ -212,17 +271,20 @@ export function PlacesPageClient({
 
   const keywordsQuery = query.startsWith("/") ? "" : query.trim();
   const isContactMode = isContactCategory(category);
+  const isPinnedMode = isPinnedCategory(category);
+  const isConvexListMode = isContactMode || isPinnedMode;
   const contactConvexReady = isContactMode && isConvexConfigured();
+  const pinnedConvexReady = isPinnedMode && isConvexConfigured();
   const searchQuery = composePlacesSearchQuery(category, keywordsQuery);
   const trimmedQuery = keywordsQuery;
   const showResultsPanel =
     serverConfigured &&
-    (isContactMode || searchQuery.length >= 2);
+    (isConvexListMode || searchQuery.length >= 2);
   // Round so GPS watch jitter does not re-fire autocomplete.
   const biasLat = userLocation ? Math.round(userLocation.lat * 1e3) / 1e3 : null;
   const biasLng = userLocation ? Math.round(userLocation.lng * 1e3) / 1e3 : null;
 
-  const onContactPlacesChange = useCallback(
+  const onConvexPlacesChange = useCallback(
     (next: { predictions: PlacePrediction[]; busy: boolean }) => {
       setPredictions(next.predictions);
       setSearchBusy(next.busy);
@@ -374,7 +436,7 @@ export function PlacesPageClient({
   // Debounced autocomplete (clearing short queries happens in onChange)
   useEffect(() => {
     if (!serverConfigured) return;
-    if (isContactMode) return;
+    if (isConvexListMode) return;
     if (query.startsWith("/")) return;
     const q = searchQuery.trim();
     if (q.length < 2) return;
@@ -424,16 +486,17 @@ export function PlacesPageClient({
     return () => {
       clearTimeout(timer);
     };
-  }, [query, searchQuery, serverConfigured, biasLat, biasLng, isContactMode]);
+  }, [query, searchQuery, serverConfigured, biasLat, biasLng, isConvexListMode]);
 
-  // Contact mode without Convex: clear Maps results and show config hint.
+  // Convex list modes without Convex: clear Maps results and show config hint.
   useEffect(() => {
-    if (!isContactMode || contactConvexReady) return;
+    if (!isConvexListMode) return;
+    if (contactConvexReady || pinnedConvexReady) return;
     setPredictions([]);
     setSearchBusy(false);
     setNextStart(null);
     setSearchError(null);
-  }, [isContactMode, contactConvexReady]);
+  }, [isConvexListMode, contactConvexReady, pinnedConvexReady]);
 
   const visiblePredictions = useMemo(
     () => predictions.slice(0, displayLimit),
@@ -441,7 +504,7 @@ export function PlacesPageClient({
   );
 
   const canLoadMore =
-    !isContactMode &&
+    !isConvexListMode &&
     !searchBusy &&
     (displayLimit < predictions.length || nextStart != null);
 
@@ -573,6 +636,26 @@ export function PlacesPageClient({
     inputRef.current?.focus();
   };
 
+  const openPinnedList = () => {
+    applyCategoryPick({ query: "", category: "pinned" });
+  };
+
+  const exitPinnedToSearch = () => {
+    setCategory(null);
+    setQuery("");
+    setPredictions([]);
+    setActiveIndex(-1);
+    setSearchError(null);
+    clearSlashSession();
+    skipUrlHydrate.current = true;
+    syncUrl({
+      q: "",
+      category: null,
+      place: selected?.placeId ?? null,
+    });
+    inputRef.current?.focus();
+  };
+
   const onSearchChange = (next: string) => {
     if (next.startsWith("/")) {
       if (!query.startsWith("/") && !slashDraft.startsWith("/")) {
@@ -677,14 +760,22 @@ export function PlacesPageClient({
     !detailsBusy &&
     !detailsError &&
     !query.startsWith("/") &&
-    !isContactMode;
+    !isConvexListMode;
+  const showPinnedEmptyPanel =
+    pinnedConvexReady &&
+    !searchBusy &&
+    !searchError &&
+    !keywordsQuery &&
+    predictions.length === 0;
   const showNoResults =
     showResultsPanel &&
     !searchBusy &&
     !searchError &&
     predictions.length === 0 &&
-    (!isContactMode || contactConvexReady);
+    !showPinnedEmptyPanel &&
+    (!isConvexListMode || contactConvexReady || pinnedConvexReady);
   const showContactConvexHint = isContactMode && !isConvexConfigured();
+  const showPinnedConvexHint = isPinnedMode && !isConvexConfigured();
 
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:flex-row lg:overflow-hidden">
@@ -708,7 +799,8 @@ export function PlacesPageClient({
               </h1>
               <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
                 Type a name or address, or{" "}
-                <span className="font-medium text-ink-2">/shop coffee</span> or{" "}
+                <span className="font-medium text-ink-2">/shop coffee</span>,{" "}
+                <span className="font-medium text-ink-2">/pinned</span>, or{" "}
                 <span className="font-medium text-ink-2">/contact</span> to
                 filter — then pick from the list or map.
               </p>
@@ -746,7 +838,7 @@ export function PlacesPageClient({
               value={query}
               onChange={(e) => onSearchChange(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Name, address, or /shop… /contact"
+              placeholder="Name, address, or /shop… /pinned /contact"
               role="combobox"
               aria-expanded={paletteOpen || showResultsPanel}
               aria-controls={paletteOpen ? categoryListboxId : listboxId}
@@ -783,7 +875,13 @@ export function PlacesPageClient({
           {contactConvexReady && (
             <ContactPlacesBridge
               keywords={keywordsQuery}
-              onChange={onContactPlacesChange}
+              onChange={onConvexPlacesChange}
+            />
+          )}
+          {pinnedConvexReady && (
+            <PinnedPlacesBridge
+              keywords={keywordsQuery}
+              onChange={onConvexPlacesChange}
             />
           )}
 
@@ -794,6 +892,11 @@ export function PlacesPageClient({
                   <>
                     <Users className="size-3.5 shrink-0" aria-hidden />
                     Contacts
+                  </>
+                ) : isPinnedMode ? (
+                  <>
+                    <Pin className="size-3.5 shrink-0" aria-hidden />
+                    Pinned
                   </>
                 ) : (
                   <>
@@ -806,7 +909,9 @@ export function PlacesPageClient({
                   aria-label={
                     isContactMode
                       ? "Clear contacts filter"
-                      : `Clear ${category} category`
+                      : isPinnedMode
+                        ? "Clear pinned filter"
+                        : `Clear ${category} category`
                   }
                   className="inline-flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                 >
@@ -822,7 +927,11 @@ export function PlacesPageClient({
             <div className="flex shrink-0 flex-col gap-2">
               <div className="flex items-baseline justify-between gap-2">
                 <h2 className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-                  {isContactMode ? "Places with contacts" : "Results"}
+                  {isContactMode
+                    ? "Places with contacts"
+                    : isPinnedMode
+                      ? "Pinned places"
+                      : "Results"}
                 </h2>
                 {!searchBusy && predictions.length > 0 && (
                   <p className="text-[12px] text-muted-foreground">
@@ -832,6 +941,27 @@ export function PlacesPageClient({
                 )}
               </div>
 
+              {showPinnedEmptyPanel ? (
+                <div
+                  className="rounded-md border border-dashed border-border px-3 py-6 text-center"
+                  role="status"
+                >
+                  <Pin className="mx-auto size-5 text-muted-foreground" aria-hidden />
+                  <p className="mt-2 text-[14px] font-medium text-foreground">
+                    No pinned places yet
+                  </p>
+                  <p className="mt-1 text-[13px] text-muted-foreground">
+                    Open a place and tap Pin to save it here.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={exitPinnedToSearch}
+                    className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  >
+                    Search places
+                  </button>
+                </div>
+              ) : (
               <ul
                 id={listboxId}
                 role="listbox"
@@ -861,13 +991,22 @@ export function PlacesPageClient({
                     and restart the dev server.
                   </li>
                 )}
+                {showPinnedConvexHint && (
+                  <li className="px-3 py-3 text-[13px] leading-5 text-muted-foreground" role="status">
+                    Pins need Convex. Set{" "}
+                    <code className="text-[11px]">NEXT_PUBLIC_CONVEX_URL</code>{" "}
+                    and restart the dev server.
+                  </li>
+                )}
                 {showNoResults && (
                   <li className="px-3 py-3 text-[13px] text-muted-foreground" role="status">
                     {isContactMode
                       ? keywordsQuery
                         ? "No matching places with contacts."
                         : "No places with contacts yet. Open a place and add a contact."
-                      : "No results. Try a shop, business, or street name."}
+                      : isPinnedMode
+                        ? "No matching pinned places."
+                        : "No results. Try a shop, business, or street name."}
                   </li>
                 )}
                 {visiblePredictions.map((p, i) => {
@@ -875,7 +1014,17 @@ export function PlacesPageClient({
                   const isSelected = selected?.placeId === p.placeId;
                   const openLabel = shortenOpenState(p.openState);
                   return (
-                    <li key={p.placeId} role="presentation">
+                    <li
+                      key={p.placeId}
+                      role="presentation"
+                      className={`flex items-start gap-0.5 pe-1 transition-colors duration-150 ${
+                        isSelected
+                          ? "bg-muted"
+                          : active
+                            ? "bg-muted/70"
+                            : "hover:bg-muted/50"
+                      }`}
+                    >
                       <button
                         type="button"
                         id={`${listboxId}-option-${i}`}
@@ -883,13 +1032,7 @@ export function PlacesPageClient({
                         aria-selected={isSelected || active}
                         onMouseEnter={() => setActiveIndex(i)}
                         onClick={() => selectPrediction(p)}
-                        className={`flex w-full cursor-pointer items-start gap-2.5 px-3 py-3 text-start transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring ${
-                          isSelected
-                            ? "bg-muted"
-                            : active
-                              ? "bg-muted/70"
-                              : "hover:bg-muted/50"
-                        }`}
+                        className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 px-3 py-3 text-start focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
                       >
                         {p.thumbnail ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -906,6 +1049,15 @@ export function PlacesPageClient({
                           <Users
                             className={`mt-0.5 size-4 shrink-0 ${
                               isSelected ? "text-foreground" : "text-muted-foreground"
+                            }`}
+                            aria-hidden
+                          />
+                        ) : isPinnedMode ? (
+                          <Pin
+                            className={`mt-0.5 size-4 shrink-0 ${
+                              isSelected
+                                ? "fill-current text-[var(--brand)]"
+                                : "text-muted-foreground"
                             }`}
                             aria-hidden
                           />
@@ -945,10 +1097,25 @@ export function PlacesPageClient({
                           )}
                         </span>
                       </button>
+                      {isPinnedMode && (
+                        <div className="mt-2 shrink-0">
+                          <PlacePinButton
+                            place={{
+                              placeId: p.placeId,
+                              name: p.mainText,
+                              formattedAddress: p.secondaryText,
+                              lat: p.lat,
+                              lng: p.lng,
+                            }}
+                            compact
+                          />
+                        </div>
+                      )}
                     </li>
                   );
                 })}
               </ul>
+              )}
 
               {canLoadMore && (
                 <button
@@ -971,8 +1138,8 @@ export function PlacesPageClient({
                 Search shops and places
               </p>
               <p className="mt-1 text-[13px] text-muted-foreground">
-                Start typing a name, or use /shop coffee or /contact to filter by
-                category.
+                Start typing a name, or use /shop coffee, /pinned, or /contact to
+                filter.
               </p>
               {locationStatus === "ready" && (
                 <p className="mt-2 text-[12px] text-muted-foreground">
@@ -1004,6 +1171,7 @@ export function PlacesPageClient({
           userLocation={userLocation}
           locateRequestId={locateRequestId}
           onSelectPrediction={selectPrediction}
+          markerAccent={isPinnedMode ? "pinned" : "default"}
         />
 
         {(selected || detailsBusy || detailsError) && (
@@ -1033,6 +1201,7 @@ export function PlacesPageClient({
                   provider={provider}
                   variant="map"
                   onClose={clearSelection}
+                  onPinnedNavigate={openPinnedList}
                 />
               )}
             </div>

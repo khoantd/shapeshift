@@ -25,6 +25,16 @@ const schema = defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_placeId", ["placeId"]),
+
+  /** User-pinned places for `/pinned` filter (one row per placeId). */
+  placePins: defineTable({
+    placeId: v.string(),
+    placeName: v.string(),
+    formattedAddress: v.optional(v.string()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
+    pinnedAt: v.number(),
+  }).index("by_placeId", ["placeId"]),
 });
 
 export default schema;

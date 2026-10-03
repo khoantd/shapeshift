@@ -4,6 +4,7 @@ import { Clock, ExternalLink, Globe, Phone, Star, X } from "lucide-react";
 import { shortenOpenState } from "@/lib/places/format";
 import type { PlaceDetails, PlacesProvider } from "@/lib/places/types";
 import { PlaceContactsSection } from "./PlaceContactsSection";
+import { PlacePinButton } from "./PlacePinButton";
 
 type PlaceDetailCardProps = {
   place: PlaceDetails;
@@ -11,6 +12,8 @@ type PlaceDetailCardProps = {
   /** `map` = floating overlay on the map; `sidebar` = denser list-adjacent card. */
   variant?: "map" | "sidebar";
   onClose?: () => void;
+  /** Toast "View" after pin — typically open `/pinned`. */
+  onPinnedNavigate?: () => void;
 };
 
 function RatingLine({ rating, reviewCount }: { rating?: number; reviewCount?: number }) {
@@ -37,6 +40,7 @@ export function PlaceDetailCard({
   provider,
   variant = "sidebar",
   onClose,
+  onPinnedNavigate,
 }: PlaceDetailCardProps) {
   const mapsLabel = provider === "maptiler" ? "Open in OpenStreetMap" : "Open in Google Maps";
   const openLabel = shortenOpenState(place.openState);
@@ -62,16 +66,23 @@ export function PlaceDetailCard({
               </p>
             )}
           </div>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close place details"
-              className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            >
-              <X className="size-4" aria-hidden />
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <PlacePinButton
+              place={place}
+              compact
+              onPinnedNavigate={onPinnedNavigate}
+            />
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close place details"
+                className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -112,12 +123,21 @@ export function PlaceDetailCard({
 
         {!isMap && (
           <>
-            <h2 className="text-[16px] leading-6 font-[550] text-foreground">{place.name}</h2>
-            {place.formattedAddress && (
-              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
-                {place.formattedAddress}
-              </p>
-            )}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-[16px] leading-6 font-[550] text-foreground">{place.name}</h2>
+                {place.formattedAddress && (
+                  <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+                    {place.formattedAddress}
+                  </p>
+                )}
+              </div>
+              <PlacePinButton
+                place={place}
+                compact
+                onPinnedNavigate={onPinnedNavigate}
+              />
+            </div>
           </>
         )}
 
