@@ -10,7 +10,9 @@
 
 import type * as placeContacts from "../placeContacts.js";
 import type * as placePins from "../placePins.js";
+import type * as placesCache from "../placesCache.js";
 import type * as waitlist from "../waitlist.js";
+import type * as youtubeLearningPacks from "../youtubeLearningPacks.js";
 
 import type {
   ApiFromModules,
@@ -21,7 +23,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   placeContacts: typeof placeContacts;
   placePins: typeof placePins;
+  placesCache: typeof placesCache;
   waitlist: typeof waitlist;
+  youtubeLearningPacks: typeof youtubeLearningPacks;
 }>;
 
 /**

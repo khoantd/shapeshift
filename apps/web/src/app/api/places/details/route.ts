@@ -1,5 +1,5 @@
 import {
-  getPlaceDetails,
+  getPlaceDetailsResult,
   missingPlacesConfigMessage,
   placesProviderConfigured,
   PlacesApiError,
@@ -31,8 +31,13 @@ export async function GET(req: Request) {
   }
 
   try {
-    const place = await getPlaceDetails(placeId, req.signal);
-    return Response.json({ success: true, place });
+    const result = await getPlaceDetailsResult(placeId, req.signal);
+    return Response.json({
+      success: true,
+      place: result.place,
+      source: result.source ?? "live",
+      ...(result.stale ? { stale: true } : {}),
+    });
   } catch (e) {
     if (e instanceof PlacesConfigError) {
       return Response.json(

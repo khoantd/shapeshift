@@ -66,6 +66,8 @@ export async function GET(req: Request) {
       success: true,
       predictions: page.predictions,
       nextStart: page.nextStart,
+      source: page.source ?? "live",
+      ...(page.stale ? { stale: true } : {}),
     });
   } catch (e) {
     if (e instanceof PlacesConfigError) {

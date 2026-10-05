@@ -19,6 +19,7 @@ An input that becomes what you mean. One text box morphs into the right UI as yo
 | `/demo` | Live morphing input — press `/` for every card type |
 | `/places` | Map search by query or `/category`, pin places (`/pinned`), place details, contacts → Lead Flow |
 | `/news` | CXO news briefing feed |
+| `/youtube` | Search YouTube or paste a link; Jev classifies content type; learning pack from transcript (Perplexity) |
 
 ## Morphing intent cards
 
@@ -91,14 +92,30 @@ Press `/` in the demo to browse all types. Each row is a card the input can beco
 
 | Feature | Description |
 | --- | --- |
-| Text search | Autocomplete venues (Google Places or MapTiler, depending on config) |
+| Text search | Autocomplete venues (Google Places, MapTiler, or SerpAPI, depending on config) |
+| SerpAPI place cache | SerpAPI results upsert into Convex (`places` / `placeSearches`); next search loads DB first (24h search / 7d details TTL), then refreshes from SerpAPI when stale |
 | Slash categories | `/shop`, `/amenity`, `/tourism`, `/office`, `/craft`, `/healthcare`, `/leisure`, `/service`, `/company`, `/commercial` |
 | Contact category | `/contact` lists places that already have saved person contacts (Convex) |
 | Pin places | Pin from place details (toast + View); unpin from `/pinned` list; brand OSM markers when filtered (Convex) |
-| Place details | Name, address, map context for a selected venue |
+| Place details | Name, address, map context for a selected venue (SerpAPI details also cached in Convex) |
 | Place contacts | Add name / email / phone on a place; stored in Convex |
 | Lead Flow sync | New contacts POST to inbound leads API (server-held API key) |
 | Map tiles | Optional map rendering when tiles provider is configured |
+
+## YouTube (`/youtube`)
+
+| Feature | Description |
+| --- | --- |
+| Search | YouTube Data API v3 `search.list` (server key `YOUTUBE_DATA_API_KEY`) |
+| Paste link | Parse watch / youtu.be / embed / shorts URLs and load video details |
+| Player | Click-to-play privacy-enhanced embed (`youtube-nocookie.com`) — no autoplay on open |
+| Jev classify | Content type (tutorial / lecture / talk / documentary / review / entertainment / music / other), Flag vs OK, urgency · relevance · tone |
+| Transcript | Cascade: InnerTube → `youtube-transcript` → timedtext → TextFlow proxy → SerpAPI → Data API (owned) → paste |
+| YouTube OAuth | Sign in with Google on `/youtube` (session cookies); optional env refresh token fallback |
+| Learning pack | Perplexity Markdown study pack from transcript (`/api/youtube/learning-pack`, needs `PERPLEXITY_API_KEY`); typography preview on `/youtube` |
+| Pack history | Signed-in Google users: packs saved to Convex (`youtubeLearningPacks`); History list on `/youtube` |
+| Offline fallback | Keyword mock classifier when TypeSafe/Jev is unavailable |
+| Agent skill | `.cursor/skills/youtube-to-learning/` (mirrored to Claude/Kiro/Antigravity) |
 
 ## Platform
 

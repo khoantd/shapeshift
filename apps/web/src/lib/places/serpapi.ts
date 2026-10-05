@@ -36,6 +36,16 @@ export type { SerpAutocompletePage } from "./serpapi-search";
 
 const SEARCH_URL = "https://serpapi.com/search.json";
 
+/** Short TTL avoids burning credits on Strict Mode double-fetch / identical retries. */
+const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
+const autocompleteCache = new Map<
+  string,
+  { expires: number; page: SerpAutocompletePage }
+>();
+
+const RATE_LIMIT_HINT =
+  "SerpAPI rate limit or search quota exceeded. Check https://serpapi.com/dashboard, wait for the hourly reset, or switch PLACES_PROVIDER to maptiler/google.";
+
 type SerpGps = { latitude?: number; longitude?: number };
 
 type SerpImage =
@@ -111,6 +121,40 @@ function mapsUriFor(lat: number, lng: number, placeId?: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
+function autocompleteCacheKey(
+  input: string,
+  bias: { lat: number; lng: number } | null | undefined,
+  start: number,
+): string {
+  const lat = bias && Number.isFinite(bias.lat) ? bias.lat.toFixed(3) : "";
+  const lng = bias && Number.isFinite(bias.lng) ? bias.lng.toFixed(3) : "";
+  return `${input.trim().toLowerCase()}|${lat},${lng}|${start}`;
+}
+
+function throwSerpHttpError(
+  status: number,
+  body: SerpMapsBody | null,
+  kind: "search" | "place",
+): never {
+  const apiMessage = typeof body?.error === "string" ? body.error.trim() : "";
+  if (status === 429) {
+    throw new PlacesApiError(apiMessage || RATE_LIMIT_HINT, 429);
+  }
+  const fallback =
+    kind === "search"
+      ? `SerpAPI maps search failed (${status})`
+      : `SerpAPI place lookup failed (${status})`;
+  throw new PlacesApiError(apiMessage || fallback, status);
+}
+
+async function readSerpBody(res: Response): Promise<SerpMapsBody | null> {
+  try {
+    return (await res.json()) as SerpMapsBody;
+  } catch {
+    return null;
+  }
+}
+
 function mapToDetails(place: SerpPlaceResult | SerpLocalResult, fallbackPlaceId: string): PlaceDetails | null {
   const lat = place.gps_coordinates?.latitude;
   const lng = place.gps_coordinates?.longitude;
@@ -156,6 +200,12 @@ export async function serpapiAutocompletePlaces(
   start: number = 0,
 ): Promise<SerpAutocompletePage> {
   const pageStart = normalizeSerpStart(start);
+  const cacheKey = autocompleteCacheKey(input, bias, pageStart);
+  const cached = autocompleteCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    return cached.page;
+  }
+
   const url = new URL(SEARCH_URL);
   url.searchParams.set("engine", "google_maps");
   url.searchParams.set("type", "search");
@@ -172,16 +222,23 @@ export async function serpapiAutocompletePlaces(
   }
 
   const res = await fetch(url, { method: "GET", signal });
+  const body = await readSerpBody(res);
   if (!res.ok) {
-    throw new PlacesApiError(`SerpAPI maps search failed (${res.status})`, res.status);
+    throwSerpHttpError(res.status, body, "search");
   }
-
-  const body = (await res.json()) as SerpMapsBody;
+  if (!body) {
+    throw new PlacesApiError("SerpAPI maps search returned an empty body", 502);
+  }
   if (body.error) {
     throw new PlacesApiError(body.error, 502);
   }
 
-  return rankSerpPredictionsForAutocomplete(body, bias, pageStart);
+  const page = rankSerpPredictionsForAutocomplete(body, bias, pageStart);
+  autocompleteCache.set(cacheKey, {
+    expires: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS,
+    page,
+  });
+  return page;
 }
 
 export async function serpapiGetPlaceDetails(
@@ -197,11 +254,13 @@ export async function serpapiGetPlaceDetails(
   url.searchParams.set("api_key", apiKey);
 
   const res = await fetch(url, { method: "GET", signal });
+  const body = await readSerpBody(res);
   if (!res.ok) {
-    throw new PlacesApiError(`SerpAPI place lookup failed (${res.status})`, res.status);
+    throwSerpHttpError(res.status, body, "place");
   }
-
-  const body = (await res.json()) as SerpMapsBody;
+  if (!body) {
+    throw new PlacesApiError("SerpAPI place lookup returned an empty body", 502);
+  }
   if (body.error) {
     throw new PlacesApiError(body.error, 502);
   }

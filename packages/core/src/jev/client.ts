@@ -9,6 +9,16 @@ import {
   type NewsBriefResult,
   type NewsBriefTone,
 } from "./newsBrief";
+import {
+  composeVideoClassifyLine,
+  FLAG_THRESHOLD,
+  videoTextForClassify,
+  type VideoBriefTone,
+  type VideoClassifyRequest,
+  type VideoClassifyResult,
+  type VideoTopic,
+} from "./videoClassify";
+import { videoClassifyQuestions, VIDEO_CLASSIFY_QUESTION_COUNT } from "./videoClassifyQuestions";
 import type { Answer, IntentResult } from "./types";
 
 let client: TypeSafeClient | null = null;
@@ -115,6 +125,42 @@ export async function briefNewsStoryWithJev(
     line: composeNewsBriefLine({ urgency, relevance, tone, query }),
     latencyMs,
     questionCount: NEWS_BRIEF_QUESTION_COUNT,
+    model: res.model,
+    source: "jev",
+  };
+}
+
+/** Classify a YouTube video with a small Jev question set. Throws on network / API errors. */
+export async function classifyVideoWithJev(
+  input: VideoClassifyRequest,
+  signal?: AbortSignal,
+): Promise<VideoClassifyResult> {
+  const started = performance.now();
+  const text = videoTextForClassify(input);
+  const query = (input.query ?? "").trim();
+  const res = await getClient().systemOne(
+    { state: { text, query }, questions: videoClassifyQuestions },
+    { signal },
+  );
+  const latencyMs = Math.round(performance.now() - started);
+  const a = res.answers;
+  const topic = a.topic.choice as VideoTopic;
+  const needsModeration = a.needsModeration.noul;
+  const urgency = a.urgency.score;
+  const relevance = a.relevance.score;
+  const tone = a.tone.choice as VideoBriefTone;
+  const flagged = needsModeration >= FLAG_THRESHOLD;
+
+  return {
+    topic,
+    needsModeration,
+    flagged,
+    urgency,
+    relevance,
+    tone,
+    line: composeVideoClassifyLine({ topic, flagged, urgency, relevance, tone, query }),
+    latencyMs,
+    questionCount: VIDEO_CLASSIFY_QUESTION_COUNT,
     model: res.model,
     source: "jev",
   };

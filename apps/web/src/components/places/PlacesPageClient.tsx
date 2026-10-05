@@ -16,8 +16,7 @@ import {
   type PlaceCategoryOption,
 } from "@shapeshift/react";
 import { useQuery } from "convex/react";
-import { ArrowLeft, LocateFixed, MapPin, Pin, Search, Star, Users, X } from "lucide-react";
-import Link from "next/link";
+import { SITE_CHROME_OFFSET_CLASS } from "@/lib/site-chrome";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
@@ -29,6 +28,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { LocateFixed, MapPin, Pin, Search, Star, Users, X } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type {
   MapTilesProvider,
@@ -56,16 +56,26 @@ type AutocompleteJson = {
   success: boolean;
   predictions?: PlacePrediction[];
   nextStart?: number | null;
+  source?: "cache" | "live";
+  stale?: boolean;
   error?: { code?: string; message?: string };
 };
 
 type DetailsJson = {
   success: boolean;
   place?: PlaceDetails;
+  source?: "cache" | "live";
+  stale?: boolean;
   error?: { code?: string; message?: string };
 };
 
+type ResultsSource = "cache" | "live" | null;
+
 const DEBOUNCE_MS = 250;
+/** SerpAPI bills per unique query — wait longer so typing burns fewer credits. */
+const SERPAPI_DEBOUNCE_MS = 700;
+/** Pause autocomplete after a 429 so we do not keep hitting an exhausted quota. */
+const SERPAPI_RATE_LIMIT_COOLDOWN_MS = 60_000;
 /** Mirror typed `q` into the URL after the user pauses (avoid soft-nav every key). */
 const URL_SYNC_MS = 300;
 
@@ -233,6 +243,7 @@ export function PlacesPageClient({
   const abortRef = useRef<AbortController | null>(null);
   const detailsAbortRef = useRef<AbortController | null>(null);
   const skipUrlHydrate = useRef(false);
+  const rateLimitUntilRef = useRef(0);
 
   const initialQ = (searchParams.get("q") ?? "").trim();
   const initialCategory = parseCategoryParam(searchParams.get("category"));
@@ -245,6 +256,7 @@ export function PlacesPageClient({
   const [loadMoreBusy, setLoadMoreBusy] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [searchBusy, setSearchBusy] = useState(false);
+  const [resultsSource, setResultsSource] = useState<ResultsSource>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<PlaceDetails | null>(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
@@ -288,6 +300,7 @@ export function PlacesPageClient({
     (next: { predictions: PlacePrediction[]; busy: boolean }) => {
       setPredictions(next.predictions);
       setSearchBusy(next.busy);
+      setResultsSource(null);
       setNextStart(null);
       setDisplayLimit(RESULTS_PAGE_SIZE);
       setSearchError(null);
@@ -441,8 +454,19 @@ export function PlacesPageClient({
     const q = searchQuery.trim();
     if (q.length < 2) return;
 
+    const debounceMs = provider === "serpapi" ? SERPAPI_DEBOUNCE_MS : DEBOUNCE_MS;
     const timer = setTimeout(() => {
       void (async () => {
+        if (Date.now() < rateLimitUntilRef.current) {
+          setPredictions([]);
+          setResultsSource(null);
+          setNextStart(null);
+          setSearchError(
+            "Search paused — SerpAPI rate limit or quota. Wait a minute, check your plan, or switch PLACES_PROVIDER.",
+          );
+          return;
+        }
+
         abortRef.current?.abort();
         const ctrl = new AbortController();
         abortRef.current = ctrl;
@@ -462,31 +486,54 @@ export function PlacesPageClient({
           });
           const json = (await res.json()) as AutocompleteJson;
           if (!res.ok || !json.success) {
-            setPredictions([]);
+            if (res.status === 429) {
+              rateLimitUntilRef.current = Date.now() + SERPAPI_RATE_LIMIT_COOLDOWN_MS;
+            }
+            // Server may still attach cached predictions on soft failures.
+            if (json.predictions?.length) {
+              setPredictions(json.predictions);
+              setResultsSource(json.source ?? "cache");
+            } else {
+              setPredictions([]);
+              setResultsSource(null);
+            }
             setNextStart(null);
             setSearchError(json.error?.message ?? "Search failed");
             return;
           }
           setPredictions(json.predictions ?? []);
+          setResultsSource(json.source ?? "live");
           setNextStart(
             typeof json.nextStart === "number" ? json.nextStart : null,
           );
           setActiveIndex(-1);
+          if (json.stale) {
+            setSearchError(
+              "Showing saved results — live search is temporarily unavailable.",
+            );
+          }
         } catch (e) {
           if (e instanceof Error && e.name === "AbortError") return;
-          setPredictions([]);
           setNextStart(null);
           setSearchError("Search failed");
         } finally {
           if (abortRef.current === ctrl) setSearchBusy(false);
         }
       })();
-    }, DEBOUNCE_MS);
+    }, debounceMs);
 
     return () => {
       clearTimeout(timer);
     };
-  }, [query, searchQuery, serverConfigured, biasLat, biasLng, isConvexListMode]);
+  }, [
+    query,
+    searchQuery,
+    serverConfigured,
+    biasLat,
+    biasLng,
+    isConvexListMode,
+    provider,
+  ]);
 
   // Convex list modes without Convex: clear Maps results and show config hint.
   useEffect(() => {
@@ -532,11 +579,20 @@ export function PlacesPageClient({
           params.set("lat", String(biasLat));
           params.set("lng", String(biasLng));
         }
+        if (Date.now() < rateLimitUntilRef.current) {
+          setSearchError(
+            "Search paused — SerpAPI rate limit or quota. Wait a minute, check your plan, or switch PLACES_PROVIDER.",
+          );
+          return;
+        }
         const res = await fetch(`/api/places/autocomplete?${params}`, {
           signal: ctrl.signal,
         });
         const json = (await res.json()) as AutocompleteJson;
         if (!res.ok || !json.success) {
+          if (res.status === 429) {
+            rateLimitUntilRef.current = Date.now() + SERPAPI_RATE_LIMIT_COOLDOWN_MS;
+          }
           setSearchError(json.error?.message ?? "Could not load more places");
           return;
         }
@@ -553,6 +609,7 @@ export function PlacesPageClient({
           mergedLength = merged.length;
           return merged;
         });
+        if (json.source) setResultsSource(json.source);
         setDisplayLimit((n) => Math.min(n + RESULTS_PAGE_SIZE, Math.max(mergedLength, n)));
         setNextStart(
           typeof json.nextStart === "number" ? json.nextStart : null,
@@ -778,33 +835,26 @@ export function PlacesPageClient({
   const showPinnedConvexHint = isPinnedMode && !isConvexConfigured();
 
   return (
-    <div className="flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:flex-row lg:overflow-hidden">
+    <div
+      className={`flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:flex-row lg:overflow-hidden ${SITE_CHROME_OFFSET_CLASS}`}
+    >
       <aside className="relative z-10 flex w-full shrink-0 flex-col border-b border-border bg-background lg:h-full lg:w-[380px] lg:overflow-hidden lg:border-r lg:border-b-0">
         <header className="flex shrink-0 flex-col gap-4 px-4 pt-6 pb-4 sm:px-5">
-          <div className="flex flex-col gap-4">
-            <Link
-              href="/"
-              className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            >
-              <ArrowLeft className="size-3.5" aria-hidden />
-              Shapeshift
-            </Link>
-            <div>
-              <p className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-                <MapPin className="size-3.5" aria-hidden />
-                Places
-              </p>
-              <h1 className="mt-1 text-[28px] leading-8 font-[550] tracking-tight text-balance">
-                Search shops and places
-              </h1>
-              <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
-                Type a name or address, or{" "}
-                <span className="font-medium text-ink-2">/shop coffee</span>,{" "}
-                <span className="font-medium text-ink-2">/pinned</span>, or{" "}
-                <span className="font-medium text-ink-2">/contact</span> to
-                filter — then pick from the list or map.
-              </p>
-            </div>
+          <div>
+            <p className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
+              <MapPin className="size-3.5" aria-hidden />
+              Places
+            </p>
+            <h1 className="mt-1 text-[28px] leading-8 font-[550] tracking-tight text-balance">
+              Search shops and places
+            </h1>
+            <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
+              Type a name or address, or{" "}
+              <span className="font-medium text-ink-2">/shop coffee</span>,{" "}
+              <span className="font-medium text-ink-2">/pinned</span>, or{" "}
+              <span className="font-medium text-ink-2">/contact</span> to
+              filter — then pick from the list or map.
+            </p>
           </div>
 
           {!serverConfigured && (
@@ -933,10 +983,16 @@ export function PlacesPageClient({
                       ? "Pinned places"
                       : "Results"}
                 </h2>
-                {!searchBusy && predictions.length > 0 && (
-                  <p className="text-[12px] text-muted-foreground">
-                    Showing {visiblePredictions.length} of {predictions.length}
-                    {nextStart != null ? "+" : ""}
+                {predictions.length > 0 && (
+                  <p
+                    className="text-[12px] text-muted-foreground"
+                    role="status"
+                    aria-atomic="true"
+                  >
+                    {searchBusy
+                      ? "Refreshing…"
+                      : `Showing ${visiblePredictions.length} of ${predictions.length}${nextStart != null ? "+" : ""}`}
+                    {!searchBusy && resultsSource === "cache" ? " · Saved" : ""}
                   </p>
                 )}
               </div>

@@ -4,11 +4,17 @@ import {
   classifierMode,
   classifyWithJev,
   briefNewsStoryWithJev,
+  classifyVideoWithJev,
   warnMockOnce,
   looksLikeKey,
 } from "./jev/client";
 import { mockClassify } from "./jev/mock";
 import { mockBriefNewsStory, newsBriefRequestSchema, type NewsBriefResult } from "./jev/newsBrief";
+import {
+  mockClassifyVideo,
+  videoClassifyRequestSchema,
+  type VideoClassifyResult,
+} from "./jev/videoClassify";
 import { type IntentResult, intentRequestSchema, noneResult } from "./jev/types";
 import { LRU, normalizeKey } from "./lru";
 
@@ -16,6 +22,7 @@ export {
   APIUserAbortError,
   classifyWithJev,
   briefNewsStoryWithJev,
+  classifyVideoWithJev,
   classifierMode,
   warnMockOnce,
   looksLikeKey,
@@ -28,6 +35,15 @@ export {
   type NewsBriefRequest,
   type NewsBriefTone,
 } from "./jev/newsBrief";
+export {
+  mockClassifyVideo,
+  videoClassifyRequestSchema,
+  composeVideoClassifyLine,
+  type VideoClassifyResult,
+  type VideoClassifyRequest,
+  type VideoTopic,
+  type VideoBriefTone,
+} from "./jev/videoClassify";
 
 export type IntentHandlerOptions = {
   /** Force the offline keyword classifier (host reads NEXT_PUBLIC_USE_MOCK). */
@@ -130,6 +146,65 @@ export function createNewsBriefHandler(opts: NewsBriefHandlerOptions = {}) {
       }
       console.warn(`[jev-brief] failed: ${err instanceof Error ? err.message : String(err)}`);
       const fallback = mockBriefNewsStory(input);
+      return Response.json({ success: true, ...fallback, model: "error-fallback" });
+    }
+  };
+}
+
+export type VideoClassifyHandlerOptions = {
+  forceOffline?: boolean;
+};
+
+/** Next.js POST handler: structured Jev classification for a YouTube video. */
+export function createVideoClassifyHandler(opts: VideoClassifyHandlerOptions = {}) {
+  const cache = new LRU<string, VideoClassifyResult>(200);
+
+  return async function POST(request: Request) {
+    const body = videoClassifyRequestSchema.safeParse(await request.json().catch(() => null));
+    if (!body.success) {
+      return Response.json(
+        { success: false, error: "Expected { title, description, query?, channelTitle? }" },
+        { status: 400 },
+      );
+    }
+
+    const input = body.data;
+    if (!input.title && !input.description) {
+      return Response.json({ success: false, error: "title or description required" }, { status: 400 });
+    }
+
+    const cacheKey = normalizeKey(
+      `${input.title}\n${input.description}\n${(input.query ?? "").trim()}\n${(input.channelTitle ?? "").trim()}`,
+    );
+    const hit = cache.get(cacheKey);
+    if (hit) {
+      return Response.json({ success: true, ...hit, latencyMs: 0, cached: true });
+    }
+
+    const { mode, reason } = opts.forceOffline
+      ? { mode: "offline" as const, reason: "forceOffline" }
+      : classifierMode();
+
+    if (mode === "offline") {
+      warnMockOnce(reason);
+      const result = mockClassifyVideo(input);
+      cache.set(cacheKey, result);
+      return Response.json({ success: true, ...result });
+    }
+
+    try {
+      const result = await classifyVideoWithJev(input, request.signal);
+      console.info(
+        `[jev-video] ${result.model} ${result.latencyMs}ms ${result.topic} flag=${result.flagged} u=${result.urgency.toFixed(2)}`,
+      );
+      cache.set(cacheKey, result);
+      return Response.json({ success: true, ...result });
+    } catch (err) {
+      if (err instanceof APIUserAbortError || request.signal.aborted) {
+        return new Response(null, { status: 499 });
+      }
+      console.warn(`[jev-video] failed: ${err instanceof Error ? err.message : String(err)}`);
+      const fallback = mockClassifyVideo(input);
       return Response.json({ success: true, ...fallback, model: "error-fallback" });
     }
   };

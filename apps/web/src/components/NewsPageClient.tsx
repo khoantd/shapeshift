@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, LoaderCircle, Newspaper, Pin, RefreshCw, Search } from "lucide-react";
+import { LoaderCircle, Newspaper, Pin, RefreshCw, Search } from "lucide-react";
+import { SITE_CHROME_OFFSET_CLASS } from "@/lib/site-chrome";
 import {
   newsDataFromSlashPick,
   parseNewsSlash,
@@ -894,25 +894,18 @@ export function NewsPageClient({
     <div
       className={
         reading
-          ? "flex h-[100dvh] w-full min-h-0 overflow-hidden"
-          : "mx-auto flex w-full max-w-xl flex-col px-4 pb-16 pt-[max(1.5rem,env(safe-area-inset-top))]"
+          ? `flex h-[100dvh] w-full min-h-0 overflow-hidden ${SITE_CHROME_OFFSET_CLASS}`
+          : `mx-auto flex w-full max-w-xl flex-col px-4 pb-16 pt-[calc(3rem+1.5rem)]`
       }
     >
       <div
         className={
           reading
-            ? "flex h-full min-h-0 w-full min-w-0 flex-col overflow-y-auto border-e px-4 pb-16 pt-[max(1.5rem,env(safe-area-inset-top))] md:w-[min(100%,24rem)] md:max-w-md md:shrink-0 lg:w-[28rem] lg:max-w-lg"
+            ? `flex h-full min-h-0 w-full min-w-0 flex-col overflow-y-auto border-e px-4 pb-16 pt-6 md:w-[min(100%,24rem)] md:max-w-md md:shrink-0 lg:w-[28rem] lg:max-w-lg`
             : "contents"
         }
       >
         <header className="mb-8 flex flex-col gap-4">
-          <Link
-            href="/"
-            className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          >
-            <ArrowLeft className="size-3.5" aria-hidden />
-            Shapeshift
-          </Link>
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1">
               <p className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
