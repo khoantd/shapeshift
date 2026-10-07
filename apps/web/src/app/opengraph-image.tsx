@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Shapeshift: a text box morphing into an event card as you type";
+export const alt = "Meanbox: a text box morphing into an event card as you type";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -25,7 +25,7 @@ export default function OpengraphImage() {
           }}
         >
           <div style={{ fontSize: 38, color: ink, letterSpacing: -0.5, display: "flex" }}>
-            dinner with priya friday 8pm on zoom<span style={{ color: "#3b5bdb" }}>|</span>
+            dinner with priya friday 8pm on zoom<span style={{ color: "#0f766e" }}>|</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
             <div style={{ width: 64, height: 64, borderRadius: 18, background: "#f4f4f2", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -43,7 +43,7 @@ export default function OpengraphImage() {
             ))}
           </div>
         </div>
-        <div style={{ fontSize: 30, color: muted, display: "flex" }}>Shapeshift: an input that becomes what you mean</div>
+        <div style={{ fontSize: 30, color: muted, display: "flex" }}>Meanbox: an input that becomes what you mean</div>
       </div>
     ),
     size,

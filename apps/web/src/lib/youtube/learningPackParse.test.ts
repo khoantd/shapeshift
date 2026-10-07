@@ -77,6 +77,23 @@ describe("buildLearningPackPrompt", () => {
     expect(prompt).toContain("TypeScript generics");
     expect(prompt).toContain("Output ONLY the Markdown");
     expect(prompt).toContain("**Revisit:** [mm:ss]");
+    expect(prompt).toContain("Study depth: standard");
+    expect(prompt).toContain("Audience: intermediate");
+  });
+
+  test("injects Jev depth and audience guidance", () => {
+    const prompt = buildLearningPackPrompt({
+      videoId: "dQw4w9WgXcQ",
+      title: "Complete course",
+      contentType: "lecture",
+      transcript: SAMPLE_TRANSCRIPT,
+      depth: "deep",
+      audience: "advanced",
+    });
+    expect(prompt).toContain("Study depth: deep");
+    expect(prompt).toContain("Audience: advanced");
+    expect(prompt).toContain("multi-module");
+    expect(prompt).toContain("experienced learners");
   });
 });
 

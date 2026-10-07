@@ -8,11 +8,15 @@
  * @module
  */
 
+import type * as githubFavorites from "../githubFavorites.js";
+import type * as newsKnowledgeArticles from "../newsKnowledgeArticles.js";
+import type * as newsKnowledgeLinks from "../newsKnowledgeLinks.js";
 import type * as placeContacts from "../placeContacts.js";
 import type * as placePins from "../placePins.js";
 import type * as placesCache from "../placesCache.js";
 import type * as waitlist from "../waitlist.js";
 import type * as youtubeLearningPacks from "../youtubeLearningPacks.js";
+import type * as youtubeTranscriptSummaries from "../youtubeTranscriptSummaries.js";
 
 import type {
   ApiFromModules,
@@ -21,11 +25,15 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  githubFavorites: typeof githubFavorites;
+  newsKnowledgeArticles: typeof newsKnowledgeArticles;
+  newsKnowledgeLinks: typeof newsKnowledgeLinks;
   placeContacts: typeof placeContacts;
   placePins: typeof placePins;
   placesCache: typeof placesCache;
   waitlist: typeof waitlist;
   youtubeLearningPacks: typeof youtubeLearningPacks;
+  youtubeTranscriptSummaries: typeof youtubeTranscriptSummaries;
 }>;
 
 /**

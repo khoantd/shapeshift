@@ -67,16 +67,16 @@
   --secondary-foreground: #1a1a19;
   --muted: #f4f4f2;
   --muted-foreground: #706e68; /* was #8f8d86 (3.0–3.3:1); now ≥4.6:1 on card, page and secondary */
-  --accent: #eef1fd;
-  --accent-foreground: #3b5bdb;
+  --accent: #ecfdf8;
+  --accent-foreground: #0f766e;
   --destructive: #e03131;
 
   --border: #e8e7e4;
   --input: #e8e7e4;
-  --ring: #3b5bdb;
+  --ring: #0f766e;
 
-  --brand: #3b5bdb;
-  --brand-soft: #eef1fd;
+  --brand: #0f766e;
+  --brand-soft: #ecfdf8;
   --ink-2: #57564f;
   --line-strong: #d6d4cf;
   --positive: #2f9e44;

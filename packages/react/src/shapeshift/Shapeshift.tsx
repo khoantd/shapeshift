@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, MotionConfig, useReducedMotion, useSpring } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { registry } from "../intents/registry";
+import { registry, CARD_INTENTS } from "../intents/registry";
 import { useDemoScript } from "../hooks/useDemoScript";
 import { useIntent } from "../hooks/useIntent";
 import { activeIntent, type DecideMemory, decide, force, initialMemory, promote } from "@shapeshift/core/decide";
@@ -17,6 +17,7 @@ import { CyclingPlaceholder } from "./CyclingPlaceholder";
 import { DebugPanel } from "./DebugPanel";
 import { GhostPreview } from "./GhostPreview";
 import { FirstRunHint } from "./FirstRunHint";
+import { GadgetShelf } from "./GadgetShelf";
 import { JevIntro } from "./JevIntro";
 import { IntentChips } from "./IntentChips";
 import { IntentPalette } from "./IntentPalette";
@@ -32,6 +33,10 @@ const subscribeNoop = () => () => {};
 const LINE = 32;
 const MAX_LINES = 5;
 
+function isCardIntent(value: string | null): value is CardIntent {
+  return value != null && (CARD_INTENTS as readonly string[]).includes(value);
+}
+
 function useSearchFlags() {
   const search = useSyncExternalStore(
     subscribeNoop,
@@ -40,8 +45,23 @@ function useSearchFlags() {
   );
   return useMemo(() => {
     const p = new URLSearchParams(search);
-    return { debug: p.get("debug") === "1", demo: p.get("demo") === "1", loop: p.get("loop") === "1" };
+    const g = p.get("g");
+    return {
+      debug: p.get("debug") === "1",
+      demo: p.get("demo") === "1",
+      loop: p.get("loop") === "1",
+      gadget: isCardIntent(g) ? g : null,
+    };
   }, [search]);
+}
+
+function replaceGadgetQuery(intent: CardIntent | null) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (intent) url.searchParams.set("g", intent);
+  else url.searchParams.delete("g");
+  const next = url.pathname + url.search + url.hash;
+  window.history.replaceState(null, "", next);
 }
 
 /** Everything about the current card that isn't the typed data itself. */
@@ -73,12 +93,17 @@ function IntentCard<K extends CardIntent>(props: {
 export type ShapeshiftProps = {
   /** Host classifier; omit for offline mock. Prefer `createFetchClassify("/api/intent")`. */
   classify?: import("../hooks/useIntent").ClassifyFn;
+  /** Optional brand lockup/mark URL for the empty-state intro (e.g. `/brand/lockup.png`). */
+  brandSrc?: string;
+  /** Show the curated gadget shelf under an empty shell (gadgets page). */
+  showGadgetShelf?: boolean;
 };
 
-export function Shapeshift({ classify }: ShapeshiftProps = {}) {
+export function Shapeshift({ classify, brandSrc, showGadgetShelf = false }: ShapeshiftProps = {}) {
   const flags = useSearchFlags();
   const reduce = useReducedMotion();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const seededGadget = useRef(false);
 
   const [text, setText] = useState("");
   const { result, resultText, status, hud } = useIntent(text, { classify });
@@ -142,6 +167,7 @@ export function Shapeshift({ classify }: ShapeshiftProps = {}) {
     setText("");
     setMem(initialMemory);
     setGated(neutralGated);
+    if (showGadgetShelf) replaceGadgetQuery(null);
     if (editingId !== null) {
       setFlyingId(editingId);
       setEditingId(null);
@@ -175,6 +201,7 @@ export function Shapeshift({ classify }: ShapeshiftProps = {}) {
     setMem(initialMemory);
     setGated(neutralGated);
     setDraftId(newId());
+    if (showGadgetShelf) replaceGadgetQuery(null);
     return true;
   };
 
@@ -214,17 +241,41 @@ export function Shapeshift({ classify }: ShapeshiftProps = {}) {
     });
   };
 
+  const openGadget = useCallback((picked: CardIntent) => {
+    const example = registry[picked].example;
+    setText(example);
+    setMem(force(picked, example));
+    setGated(neutralGated);
+    setPaletteOpen(false);
+    if (showGadgetShelf) replaceGadgetQuery(picked);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(example.length, example.length);
+    });
+  }, [showGadgetShelf]);
+
   const pick = (picked: CardIntent) => {
     let t = text;
     if (!t.trim()) {
       t = registry[picked].example;
       setText(t);
+      if (showGadgetShelf) replaceGadgetQuery(picked);
     }
     setMem(force(picked, t));
     setGated((g) => (intent === picked ? g : neutralGated));
     setPaletteOpen(false);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
+
+  // Deep-link seed: /gadgets?g=tip fills that gadget's example once on load.
+  useEffect(() => {
+    if (seededGadget.current) return;
+    if (!flags.gadget) return;
+    seededGadget.current = true;
+    openGadget(flags.gadget);
+  }, [flags.gadget, openGadget]);
 
   /** RTCFC/BCMT sample roll writes the composed prompt into the shell. */
   const applyText = useCallback((t: string) => {
@@ -331,8 +382,8 @@ export function Shapeshift({ classify }: ShapeshiftProps = {}) {
   return (
     <MotionConfig reducedMotion="user">
       <main id="main" className="mx-auto w-full max-w-[560px] px-4 pt-[10vh] pb-24 sm:px-0 sm:pt-[16vh]">
-        {!showJevIntro && <h1 className="sr-only">Shapeshift</h1>}
-        <JevIntro show={showJevIntro} />
+        {!showJevIntro && <h1 className="sr-only">Meanbox</h1>}
+        <JevIntro show={showJevIntro} brandSrc={brandSrc} />
         <MorphContainer readiness={readiness} edge={ghost ? null : (meta?.edge ?? null)}>
           <motion.div layout="position" className="relative min-h-[72px] px-5 py-5">
             <textarea
@@ -407,7 +458,15 @@ export function Shapeshift({ classify }: ShapeshiftProps = {}) {
           </AnimatePresence>
         </MorphContainer>
 
-        <FirstRunHint show={!intent && ui.kind !== "choose" && saved.length === 0 && !flags.demo} />
+        {showGadgetShelf ? (
+          <GadgetShelf
+            show={!text.trim() && !intent && ui.kind !== "choose"}
+            onPick={openGadget}
+            onBrowseAll={() => setPaletteOpen(true)}
+          />
+        ) : (
+          <FirstRunHint show={!intent && ui.kind !== "choose" && saved.length === 0 && !flags.demo} />
+        )}
 
         <IntentChips
           options={ui.kind === "choose" ? ui.options : null}

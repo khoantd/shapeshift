@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { LoaderCircle, Newspaper, Pin, RefreshCw, Search } from "lucide-react";
+import { BrandBackdrop } from "@/components/brand/BrandBackdrop";
+import { toAiLanguage } from "@/lib/i18n/appLocale";
 import { SITE_CHROME_OFFSET_CLASS } from "@/lib/site-chrome";
 import {
   newsDataFromSlashPick,
@@ -18,9 +21,13 @@ import {
   type NewsDeepDiveView,
   type NewsDeepDiveLanguage,
   type NewsFeedItem,
+  type NewsReaderTab,
   type NewsSourceOption,
 } from "@shapeshift/react";
 import { NewsStatsPanel } from "@/components/NewsStatsPanel";
+import { NewsKnowledgeGraphPanel } from "@/components/news/NewsKnowledgeGraphPanel";
+import { NewsCompareLinkPanel } from "@/components/news/NewsCompareLinkPanel";
+import type { GraphPayload } from "@/lib/neo4j/types";
 import {
   aggregateIntentStats,
   readIntentEvents,
@@ -55,12 +62,29 @@ type FeedResponse = {
   items?: NewsFeedItem[];
   sources?: Array<{ id?: string; name?: string; enabled?: boolean }>;
   error?: string;
+  pull?: {
+    targetCount: number;
+    okCount: number;
+    failCount: number;
+  } | null;
 };
 
 type BriefApiResponse = NewsBriefView & {
   success?: boolean;
   error?: string;
 };
+
+function briefViewFromApi(body: BriefApiResponse): NewsBriefView {
+  return {
+    urgency: body.urgency,
+    relevance: body.relevance,
+    tone: body.tone,
+    line: body.line,
+    source: body.source,
+    ...(typeof body.worthDeepDive === "boolean" ? { worthDeepDive: body.worthDeepDive } : {}),
+    ...(typeof body.worthGraph === "boolean" ? { worthGraph: body.worthGraph } : {}),
+  };
+}
 
 type DeepDiveApiResponse = {
   success?: boolean;
@@ -100,6 +124,8 @@ function briefFromItem(item: NewsFeedItem): NewsBriefView | null {
     tone: b.tone,
     line: b.line.trim(),
     source: b.source,
+    ...(typeof b.worthDeepDive === "boolean" ? { worthDeepDive: b.worthDeepDive } : {}),
+    ...(typeof b.worthGraph === "boolean" ? { worthGraph: b.worthGraph } : {}),
   };
 }
 
@@ -166,10 +192,12 @@ function isCriticalItem(item: NewsFeedItem): boolean {
   return CRITICAL_WORDS.test(`${item.title} ${item.excerpt}`);
 }
 
-type NewsView = "feed" | "stats";
+type NewsView = "feed" | "stats" | "knowledge";
 
 function parseNewsView(raw: string | null): NewsView {
-  return raw === "stats" ? "stats" : "feed";
+  if (raw === "stats") return "stats";
+  if (raw === "knowledge") return "knowledge";
+  return "feed";
 }
 
 type SyncUrlParams = {
@@ -185,6 +213,8 @@ function briefBadgeFor(brief: NewsBriefView | undefined, hasQuery: boolean): str
   if (!brief) return undefined;
   if (hasQuery && brief.relevance >= 0.67) return "Highly relevant";
   if (brief.urgency >= 0.67) return "Urgent";
+  if (brief.worthDeepDive) return "Deep dive";
+  if (brief.worthGraph) return "Graph";
   if (brief.tone === "caution") return "Caution";
   return undefined;
 }
@@ -214,6 +244,8 @@ export function NewsPageClient({
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const locale = useLocale();
+  const t = useTranslations("News");
   const initialQ = searchParams.get("q") ?? "";
   const initialCritical = searchParams.get("critical") === "1";
   const initialSource = searchParams.get("source") ?? "";
@@ -257,14 +289,25 @@ export function NewsPageClient({
   );
   const [deepDiveErrors, setDeepDiveErrors] = useState<Record<string, string>>({});
   const [deepDiveLoadingId, setDeepDiveLoadingId] = useState<string | null>(null);
-  const [deepDiveLanguage, setDeepDiveLanguage] = useState<NewsDeepDiveLanguage>("vi");
+  const [deepDiveLanguage, setDeepDiveLanguage] = useState<NewsDeepDiveLanguage>(() =>
+    toAiLanguage(locale),
+  );
   const deepDiveAbortRef = useRef<AbortController | null>(null);
   const deepDiveCacheRef = useRef(deepDiveCache);
   deepDiveCacheRef.current = deepDiveCache;
+  useEffect(() => {
+    setDeepDiveLanguage(toAiLanguage(locale));
+  }, [locale]);
   const deepDiveLanguageRef = useRef(deepDiveLanguage);
   deepDiveLanguageRef.current = deepDiveLanguage;
   /** Story ids we already tried to recover sources for (avoid regen loops). */
   const deepDiveHealAttemptedRef = useRef(new Set<string>());
+
+  const [readerTab, setReaderTab] = useState<NewsReaderTab>("read");
+  const [googleSignedIn, setGoogleSignedIn] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
+  const [graphCache, setGraphCache] = useState<Record<string, GraphPayload>>({});
+  const [knowledgeRefreshKey, setKnowledgeRefreshKey] = useState(0);
 
   const [slashDraft, setSlashDraft] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -338,6 +381,7 @@ export function NewsPageClient({
             title,
             excerpt,
             query: queryForBrief || undefined,
+            language: toAiLanguage(locale),
           }),
           signal: ctrl.signal,
         });
@@ -345,13 +389,7 @@ export function NewsPageClient({
         if (!res.ok || body.success === false) {
           throw new Error(body.error ?? `Brief failed (${res.status})`);
         }
-        const view: NewsBriefView = {
-          urgency: body.urgency,
-          relevance: body.relevance,
-          tone: body.tone,
-          line: body.line,
-          source: body.source,
-        };
+        const view: NewsBriefView = briefViewFromApi(body);
         setBriefCache((prev) => ({
           ...prev,
           [cacheKey]: view,
@@ -369,6 +407,12 @@ export function NewsPageClient({
                     line: view.line,
                     source: view.source,
                     query: queryForBrief,
+                    ...(typeof view.worthDeepDive === "boolean"
+                      ? { worthDeepDive: view.worthDeepDive }
+                      : {}),
+                    ...(typeof view.worthGraph === "boolean"
+                      ? { worthGraph: view.worthGraph }
+                      : {}),
                   },
                 }
               : row,
@@ -378,7 +422,7 @@ export function NewsPageClient({
         if (ctrl.signal.aborted) return;
         setBriefErrors((prev) => ({
           ...prev,
-          [cacheKey]: e instanceof Error ? e.message : "Could not load brief",
+          [cacheKey]: e instanceof Error ? e.message : t("errorBrief"),
         }));
       } finally {
         if (!ctrl.signal.aborted) {
@@ -388,19 +432,26 @@ export function NewsPageClient({
     })();
 
     return () => ctrl.abort();
-  }, [readerItem, readerBriefKey, highlightQuery]);
+  }, [readerItem, readerBriefKey, highlightQuery, locale]);
 
-  const load = useCallback(async (opts?: { source?: string }) => {
+  const load = useCallback(async (opts?: { source?: string; pull?: boolean }) => {
     const source = (opts?.source ?? sourceHint).trim();
+    const pull = opts?.pull === true;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({ limit: "50" });
       if (source) params.set("source", source);
-      const res = await fetch(`/api/news?${params}`, { headers: { Accept: "application/json" } });
+      const res = pull
+        ? await fetch(`/api/news/refresh?${params}`, {
+            method: "POST",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify(source ? { source } : {}),
+          })
+        : await fetch(`/api/news?${params}`, { headers: { Accept: "application/json" } });
       const body = (await res.json()) as FeedResponse;
       if (!res.ok || body.success !== true) {
-        setError(body.error ?? `Could not load feed (${res.status})`);
+        setError(body.error ?? `Could not ${pull ? "pull" : "load"} feed (${res.status})`);
         return;
       }
       const next = Array.isArray(body.items) ? body.items : [];
@@ -415,8 +466,13 @@ export function NewsPageClient({
       setDeepDiveCache((prev) => seedDeepDiveCache(next, prev));
       setBriefCache((prev) => seedBriefCache(next, prev));
       setVisibleCount(PAGE_SIZE);
+      if (pull && body.pull && body.pull.failCount > 0 && body.pull.okCount === 0) {
+        setError(
+          `Could not pull new articles from ${body.pull.failCount} source${body.pull.failCount === 1 ? "" : "s"}.`,
+        );
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load feed");
+      setError(e instanceof Error ? e.message : t("errorFeed"));
     } finally {
       setLoading(false);
     }
@@ -454,7 +510,7 @@ export function NewsPageClient({
         setError(body.error ?? `Could not sync pin (${res.status})`);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not sync pin");
+      setError(e instanceof Error ? e.message : t("errorPin"));
     } finally {
       setPinningId(null);
     }
@@ -483,7 +539,7 @@ export function NewsPageClient({
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not sync read state");
+      setError(e instanceof Error ? e.message : t("errorRead"));
       setItems((prev) =>
         prev.map((row) => (row.id === item.id ? { ...row, isRead: item.isRead } : row)),
       );
@@ -576,7 +632,7 @@ export function NewsPageClient({
   const setNewsView = useCallback(
     (next: NewsView) => {
       setView(next);
-      if (next === "stats") {
+      if (next === "stats" || next === "knowledge") {
         setReaderId(null);
         setReaderShellOpen(false);
         clearSlashSession();
@@ -613,17 +669,12 @@ export function NewsPageClient({
                   title: story.title,
                   excerpt: story.excerpt,
                   query: queryForBrief || undefined,
+                  language: toAiLanguage(locale),
                 }),
               });
               const body = (await res.json()) as BriefApiResponse;
               if (!res.ok || body.success === false) return;
-              const viewBrief: NewsBriefView = {
-                urgency: body.urgency,
-                relevance: body.relevance,
-                tone: body.tone,
-                line: body.line,
-                source: body.source,
-              };
+              const viewBrief: NewsBriefView = briefViewFromApi(body);
               setBriefCache((prev) => ({
                 ...prev,
                 [cacheKey]: viewBrief,
@@ -641,6 +692,12 @@ export function NewsPageClient({
                           line: viewBrief.line,
                           source: viewBrief.source,
                           query: queryForBrief,
+                          ...(typeof viewBrief.worthDeepDive === "boolean"
+                            ? { worthDeepDive: viewBrief.worthDeepDive }
+                            : {}),
+                          ...(typeof viewBrief.worthGraph === "boolean"
+                            ? { worthGraph: viewBrief.worthGraph }
+                            : {}),
                         },
                       }
                     : row,
@@ -655,7 +712,7 @@ export function NewsPageClient({
     } finally {
       setScoringUnscored(false);
     }
-  }, [filterQ, items, newsStats.unscoredIds, scoringUnscored]);
+  }, [filterQ, items, locale, newsStats.unscoredIds, scoringUnscored]);
 
   const applyIntent = useCallback(
     (data: NewsData) => {
@@ -723,6 +780,7 @@ export function NewsPageClient({
     (item: NewsFeedItem) => {
       setReaderShellOpen(true);
       setReaderId(item.id);
+      setReaderTab("read");
       const stored = deepDiveFromItem(item);
       if (stored?.language === "vi" || stored?.language === "en") {
         setDeepDiveLanguage(stored.language);
@@ -838,7 +896,7 @@ export function NewsPageClient({
           if (ctrl.signal.aborted) return;
           setDeepDiveErrors((prev) => ({
             ...prev,
-            [storyId]: e instanceof Error ? e.message : "Could not load deep dive",
+            [storyId]: e instanceof Error ? e.message : t("errorDeepDive"),
           }));
         } finally {
           if (!ctrl.signal.aborted) {
@@ -871,6 +929,65 @@ export function NewsPageClient({
 
   const reading = readerShellOpen && view === "feed";
   const showStats = view === "stats";
+  const showKnowledge = view === "knowledge";
+  const graphImmersive = reading && readerTab === "graph";
+
+  const signInForNews = useCallback(() => {
+    const returnTo = encodeURIComponent("/news?view=knowledge");
+    window.location.href = `/api/youtube/oauth/start?returnTo=${returnTo}`;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/youtube/oauth/session");
+        const body = (await res.json()) as {
+          connected?: boolean;
+          email?: string | null;
+        };
+        if (cancelled) return;
+        setGoogleSignedIn(Boolean(body.connected));
+        setGoogleEmail(body.email ?? null);
+      } catch {
+        if (!cancelled) {
+          setGoogleSignedIn(false);
+          setGoogleEmail(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!readerItem || !googleSignedIn) return;
+    if (graphCache[readerItem.id]) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/news/knowledge-graph?storyId=${encodeURIComponent(readerItem.id)}`,
+        );
+        const body = (await res.json()) as {
+          success?: boolean;
+          graph?: GraphPayload | null;
+        };
+        if (cancelled || !body.success || !body.graph?.nodes?.length) return;
+        // Never overwrite a graph already built/renamed in this session.
+        setGraphCache((prev) => {
+          if (prev[readerItem.id]) return prev;
+          return { ...prev, [readerItem.id]: body.graph! };
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [readerItem, googleSignedIn, graphCache]);
   const readerBrief = readerBriefKey
     ? briefCache[readerBriefKey] ?? (readerItem ? briefCache[readerItem.id] ?? null : null)
     : null;
@@ -894,67 +1011,94 @@ export function NewsPageClient({
     <div
       className={
         reading
-          ? `flex h-[100dvh] w-full min-h-0 overflow-hidden ${SITE_CHROME_OFFSET_CLASS}`
-          : `mx-auto flex w-full max-w-xl flex-col px-4 pb-16 pt-[calc(3rem+1.5rem)]`
+          ? `relative flex h-[100dvh] w-full min-h-0 overflow-hidden ${SITE_CHROME_OFFSET_CLASS}`
+          : `relative mx-auto flex w-full max-w-xl flex-col px-4 pb-16 pt-[calc(3rem+env(safe-area-inset-top,0px)+1.5rem)]`
       }
     >
+      {!reading && (
+        <BrandBackdrop
+          src="/brand/main.jpg"
+          scrub="light"
+          position="center top"
+          className="fixed inset-0 -z-10"
+        />
+      )}
       <div
         className={
-          reading
-            ? `flex h-full min-h-0 w-full min-w-0 flex-col overflow-y-auto border-e px-4 pb-16 pt-6 md:w-[min(100%,24rem)] md:max-w-md md:shrink-0 lg:w-[28rem] lg:max-w-lg`
-            : "contents"
+          graphImmersive
+            ? "hidden"
+            : reading
+              ? `relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden border-e bg-background/50 md:w-[min(100%,24rem)] md:max-w-md md:shrink-0 lg:w-[28rem] lg:max-w-lg`
+              : "relative z-[1] contents"
         }
       >
+        {reading && (
+          <BrandBackdrop src="/brand/main.jpg" scrub="medium" position="left center" />
+        )}
+        <div
+          className={
+            reading
+              ? "relative z-[1] flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-16 pt-6"
+              : "contents"
+          }
+        >
         <header className="mb-8 flex flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1">
               <p className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
                 <Newspaper className="size-3.5" aria-hidden />
-                Critical brief
+                {t("criticalBrief")}
               </p>
-              <h1 className="text-[28px] leading-8 font-[550] tracking-tight text-balance">News worth knowing</h1>
-              {!reading && !showStats ? (
+              <h1 className="text-[28px] leading-8 font-[550] tracking-tight text-balance">{t("headline")}</h1>
+              {!reading && !showStats && !showKnowledge ? (
                 <p className="max-w-md text-[15px] leading-[22px] text-ink-2">
-                  Curated from your Inspired Canvas feed — type{" "}
-                  <kbd className="rounded border bg-muted px-1 font-mono text-[12px]">/</kbd> for a
-                  source, then keywords.
+                  {t("subhead")}
                 </p>
               ) : null}
               {showStats ? (
                 <p className="max-w-md text-[15px] leading-[22px] text-ink-2">
-                  Scores and rankings from Jev briefs, plus intent morphing from the demo.
+                  {t("statsSubhead")}
+                </p>
+              ) : null}
+              {showKnowledge ? (
+                <p className="max-w-md text-[15px] leading-[22px] text-ink-2">
+                  {t("knowledgeSubhead", {
+                    signedIn: googleEmail
+                      ? t("signedInAs", { email: googleEmail })
+                      : "",
+                  })}
                 </p>
               ) : null}
             </div>
             <button
               type="button"
-              onClick={() => void load()}
+              onClick={() => void load({ pull: true })}
               disabled={loading}
               aria-busy={loading}
-              title="Refresh feed from Inspired Canvas"
+              title={t("refreshTitle")}
               className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2.5 text-[13px] font-medium text-muted-foreground transition-[color,background-color,scale] duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.96] disabled:pointer-events-none disabled:opacity-60"
             >
               <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden />
-              Refresh
+              {t("refresh")}
             </button>
           </div>
           <div
             role="tablist"
-            aria-label="News views"
-            className="inline-flex h-9 w-fit items-center gap-0.5 rounded-lg border bg-muted/40 p-0.5"
+            aria-label={t("viewsAria")}
+            className="inline-flex h-9 w-fit flex-wrap items-center gap-0.5 rounded-lg border bg-muted/40 p-0.5"
           >
             <button
               type="button"
               role="tab"
-              aria-selected={!showStats}
+              aria-selected={view === "feed"}
               onClick={() => setNewsView("feed")}
               className={
-                !showStats
+                view === "feed"
                   ? "inline-flex h-8 cursor-pointer items-center rounded-md bg-background px-3 text-[13px] font-medium text-foreground shadow-xs transition-[color,background-color] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   : "inline-flex h-8 cursor-pointer items-center rounded-md px-3 text-[13px] font-medium text-muted-foreground transition-[color,background-color] duration-150 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               }
             >
-              Feed
+              {t("feed")}
             </button>
             <button
               type="button"
@@ -967,12 +1111,31 @@ export function NewsPageClient({
                   : "inline-flex h-8 cursor-pointer items-center rounded-md px-3 text-[13px] font-medium text-muted-foreground transition-[color,background-color] duration-150 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               }
             >
-              Stats
+              {t("stats")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={showKnowledge}
+              onClick={() => setNewsView("knowledge")}
+              className={
+                showKnowledge
+                  ? "inline-flex h-8 cursor-pointer items-center rounded-md bg-background px-3 text-[13px] font-medium text-foreground shadow-xs transition-[color,background-color] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  : "inline-flex h-8 cursor-pointer items-center rounded-md px-3 text-[13px] font-medium text-muted-foreground transition-[color,background-color] duration-150 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              }
+            >
+              {t("knowledge")}
             </button>
           </div>
         </header>
 
-        {showStats ? (
+        {showKnowledge ? (
+          <NewsCompareLinkPanel
+            signedIn={googleSignedIn}
+            onSignIn={signInForNews}
+            refreshKey={knowledgeRefreshKey}
+          />
+        ) : showStats ? (
           <NewsStatsPanel
             news={newsStats}
             hasQuery={hasQuery}
@@ -985,7 +1148,7 @@ export function NewsPageClient({
           <>
         <div className="mb-6 flex flex-col gap-3">
           <label className="relative block">
-            <span className="sr-only">Filter news</span>
+            <span className="sr-only">{t("filterAria")}</span>
             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <input
               type="search"
@@ -1000,7 +1163,7 @@ export function NewsPageClient({
                   onClearConfirm();
                 }
               }}
-              placeholder="Filter by topic, or /source keywords…"
+              placeholder={t("filterPlaceholder")}
               autoComplete="off"
               className="h-11 w-full rounded-lg border bg-background pe-3 ps-10 text-[15px] outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             />
@@ -1030,7 +1193,7 @@ export function NewsPageClient({
                 size="sm"
                 variant="outline"
                 spacing={0}
-                aria-label="Read status"
+                aria-label={t("readStatusAria")}
                 className="h-8"
               >
                 <ToggleGroupItem
@@ -1074,7 +1237,7 @@ export function NewsPageClient({
                 size="sm"
                 variant="outline"
                 spacing={0}
-                aria-label="Sort by date"
+                aria-label={t("sortAria")}
                 className="h-8"
               >
                 <ToggleGroupItem
@@ -1161,9 +1324,7 @@ export function NewsPageClient({
             </div>
           ) : visible.length === 0 ? (
             <p className="text-[15px] leading-[22px] text-muted-foreground">
-              {items.length === 0
-                ? "No items in your Inspired Canvas feed yet."
-                : "No stories match this filter."}
+              {items.length === 0 ? t("emptyFeed") : t("emptyFilter")}
             </p>
           ) : (
             <div
@@ -1180,10 +1341,10 @@ export function NewsPageClient({
               ) : null}
 
               {pinned.length > 0 ? (
-                <section aria-label="Pinned for later" className="flex flex-col gap-1">
+                <section aria-label={t("pinnedForLater")} className="flex flex-col gap-1">
                   <p className="mb-1 inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
                     <Pin className="size-3" aria-hidden />
-                    Pinned for later
+                    {t("pinnedForLater")}
                     <span className="font-normal normal-case tracking-normal text-muted-foreground">
                       · {pinned.length}
                     </span>
@@ -1246,10 +1407,11 @@ export function NewsPageClient({
         </div>
           </>
         )}
+        </div>
       </div>
 
       <NewsReaderPane
-        item={showStats ? null : readerItem}
+        item={showStats || showKnowledge ? null : readerItem}
         onClose={closeReader}
         onExitComplete={onReaderExitComplete}
         highlightQuery={highlightQuery}
@@ -1269,11 +1431,39 @@ export function NewsPageClient({
         onRegenerateDeepDive={
           readerItem ? () => generateDeepDive({ force: true, language: deepDiveLanguage }) : undefined
         }
-        className="fixed inset-0 z-50 flex min-h-0 flex-col bg-background md:static md:z-auto md:min-w-0 md:flex-1 md:border-s"
+        readerTab={readerTab}
+        onReaderTabChange={setReaderTab}
+        graphPanel={
+          readerItem ? (
+            <NewsKnowledgeGraphPanel
+              storyId={readerItem.id}
+              title={readerItem.title}
+              canonicalUrl={readerItem.canonicalUrl}
+              deepDiveText={readerDeepDive?.text ?? ""}
+              briefLine={readerBrief?.line}
+              sources={readerDeepDive?.sources ?? []}
+              initialGraph={graphCache[readerItem.id] ?? null}
+              signedIn={googleSignedIn}
+              onSignIn={signInForNews}
+              onGraphReady={(graph, meta) => {
+                setGraphCache((prev) => ({ ...prev, [readerItem.id]: graph }));
+                if (meta.historySaved) {
+                  setGoogleSignedIn(true);
+                  setKnowledgeRefreshKey((n) => n + 1);
+                }
+              }}
+            />
+          ) : null
+        }
+        className={
+          graphImmersive
+            ? `fixed inset-x-0 bottom-0 z-50 flex min-h-0 flex-col bg-background/80 backdrop-blur-sm ${SITE_CHROME_OFFSET_CLASS} md:static md:z-auto md:min-w-0 md:flex-1 md:pt-0`
+            : "fixed inset-0 z-50 flex min-h-0 flex-col bg-background/75 backdrop-blur-sm md:static md:z-auto md:min-w-0 md:flex-1 md:border-s"
+        }
       />
 
       <NewsSourcePalette
-        open={paletteOpen && !confirmOpen && !showStats}
+        open={paletteOpen && !confirmOpen && !showStats && !showKnowledge}
         onOpenChange={(open) => {
           if (!open) {
             if (!confirmOpen) onClearConfirm();

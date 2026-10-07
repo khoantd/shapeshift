@@ -24,13 +24,14 @@ export function tidy(s: string) {
   return out.trim();
 }
 
-export type Currency = "₹" | "$" | "€" | "£";
+export type Currency = "₹" | "$" | "€" | "£" | "₫";
 export const DEFAULT_CURRENCY: Currency = "₹";
 
 export function detectCurrency(text: string): Currency {
   if (/\$|\busd\b|dollars?\b/i.test(text)) return "$";
   if (/€|\beur(os?)?\b/i.test(text)) return "€";
   if (/£|\bgbp\b|pounds? sterling/i.test(text)) return "£";
+  if (/₫|\bvnd\b|đồng|\bdong\b/i.test(text)) return "₫";
   return DEFAULT_CURRENCY;
 }
 
@@ -80,6 +81,10 @@ export function removeRange(text: string, index: number, length: number) {
 }
 
 export function formatAmount(n: number, currency: Currency = DEFAULT_CURRENCY) {
+  if (currency === "₫") {
+    const rounded = Math.round(n);
+    return currency + rounded.toLocaleString("vi-VN", { maximumFractionDigits: 0 });
+  }
   const locale = currency === "₹" ? "en-IN" : "en-US";
   const rounded = Math.round(n * 100) / 100;
   return (

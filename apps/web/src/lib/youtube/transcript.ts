@@ -3,6 +3,11 @@ import "server-only";
 import type { NextRequest } from "next/server";
 import { fetchTranscriptViaDataApi } from "./captions";
 import { parseCaptionBody } from "./captionFormat";
+import {
+  DEFAULT_TRANSCRIPT_PREFER_LANGS,
+  isAcceptableTranscriptLanguage,
+  pickPreferredCaptionTrack,
+} from "./captionLanguage";
 import { fetchTranscriptViaInnerTube } from "./innertubeTranscript";
 import { youtubeOAuthClientConfigured, youtubeOAuthEnvConfigured } from "./oauth";
 import { fetchTranscriptViaSerpApi } from "./serpapiTranscript";
@@ -199,16 +204,6 @@ function extractCaptionTracks(html: string): CaptionTrack[] {
   return [];
 }
 
-function pickTrack(tracks: CaptionTrack[], preferLangs: string[]): CaptionTrack | null {
-  if (tracks.length === 0) return null;
-  for (const lang of preferLangs) {
-    const hit = tracks.find((t) => t.languageCode.toLowerCase().startsWith(lang.toLowerCase()));
-    if (hit) return hit;
-  }
-  const manual = tracks.find((t) => (t.kind ?? "").toLowerCase() !== "asr");
-  return manual ?? tracks[0] ?? null;
-}
-
 function truncateTranscript(text: string): { text: string; truncated: boolean } {
   if (text.length <= TRANSCRIPT_MAX_CHARS) return { text, truncated: false };
   return {
@@ -261,7 +256,9 @@ async function probeManualTimedtext(
   preferLangs: string[],
   signal?: AbortSignal,
 ): Promise<TranscriptFetchResult | null> {
-  const langs = [...preferLangs, "en"];
+  // Only request preferred langs — bare timedtext (no lang) often returns a geo-default
+  // auto-translate (e.g. Arabic) instead of the spoken language.
+  const langs = [...new Set([...preferLangs, "en"])];
   const urls: string[] = [];
   for (const lang of langs) {
     urls.push(
@@ -270,16 +267,21 @@ async function probeManualTimedtext(
       `https://www.youtube.com/api/timedtext?v=${id}&lang=${encodeURIComponent(lang)}&fmt=vtt`,
     );
   }
-  urls.push(
-    `https://www.youtube.com/api/timedtext?v=${id}&fmt=json3`,
-    `https://www.youtube.com/api/timedtext?v=${id}&fmt=srv3`,
-  );
 
   for (const url of urls.slice(0, 12)) {
     const body = await fetchCaptionUrl(url, signal);
     if (!body || body.length < 20) continue;
     const text = parseCaptionBody(body);
     if (!text) continue;
+    if (
+      !isAcceptableTranscriptLanguage({
+        language: undefined,
+        text,
+        preferLangs,
+      })
+    ) {
+      continue;
+    }
     const capped = truncateTranscript(text);
     return {
       status: "ok",
@@ -336,7 +338,7 @@ async function fetchViaTimedtext(
     return { status: "failed", reason: "no_transcript" };
   }
 
-  const track = pickTrack(tracks, preferLangs);
+  const track = pickPreferredCaptionTrack(tracks, preferLangs);
   if (!track) {
     return { status: "failed", reason: "no_transcript" };
   }
@@ -385,17 +387,25 @@ export async function fetchYouTubeTranscript(
     return { status: "failed", reason: "invalid_id" };
   }
 
-  const preferLangs = opts?.preferLangs ?? ["en", "vi", "en-US", "en-GB"];
+  const preferLangs = opts?.preferLangs ?? [...DEFAULT_TRANSCRIPT_PREFER_LANGS];
 
   const okFromText = (
     text: string,
     language: string | undefined,
     source: TranscriptSource,
     extra?: Pick<TranscriptFetchResult, "refreshedSession">,
-  ): TranscriptFetchResult => {
+  ): TranscriptFetchResult | null => {
     const capped = truncateTranscript(text);
-    if (!capped.text.trim()) {
-      return { status: "failed", reason: "empty" };
+    if (!capped.text.trim()) return null;
+    if (
+      !isAcceptableTranscriptLanguage({
+        language,
+        text: capped.text,
+        preferLangs,
+      })
+    ) {
+      // Wrong auto-translate (e.g. Arabic) — try next source in the cascade.
+      return null;
     }
     return {
       status: "ok",
@@ -413,25 +423,32 @@ export async function fetchYouTubeTranscript(
     signal: opts?.signal,
   });
   if (inner) {
-    return okFromText(inner.text, inner.language, "innertube");
+    const accepted = okFromText(inner.text, inner.language, "innertube");
+    if (accepted) return accepted;
   }
 
   // 2) Public captions via youtube-transcript
   const lib = await fetchTranscriptViaLibrary(id, { preferLangs });
   if (lib.ok) {
-    return okFromText(lib.text, lib.language, "youtube_transcript");
+    const accepted = okFromText(lib.text, lib.language, "youtube_transcript");
+    if (accepted) return accepted;
   }
 
   // 3) Hardened timedtext HTML scrape
   const scraped = await fetchViaTimedtext(id, preferLangs, opts?.signal);
-  if (scraped.status === "ok") {
-    return scraped;
+  if (scraped.status === "ok" && scraped.text) {
+    const accepted = okFromText(scraped.text, scraped.language, "timedtext");
+    if (accepted) return accepted;
   }
 
   // 4) TextFlow proxy — host with a non-blocked IP (TEXTFLOW_API_URL + TEXTFLOW_API_KEY)
-  const textflow = await fetchTranscriptViaTextFlow(id, { signal: opts?.signal });
+  const textflow = await fetchTranscriptViaTextFlow(id, {
+    preferLangs,
+    signal: opts?.signal,
+  });
   if (textflow) {
-    return okFromText(textflow.text, textflow.language, "textflow");
+    const accepted = okFromText(textflow.text, textflow.language, "textflow");
+    if (accepted) return accepted;
   }
 
   // 5) SerpAPI — reliable from cloud IPs when YouTube blocks Vercel (uses SERPAPI_API_KEY)
@@ -440,7 +457,8 @@ export async function fetchYouTubeTranscript(
     signal: opts?.signal,
   });
   if (serp) {
-    return okFromText(serp.text, serp.language, "serpapi");
+    const accepted = okFromText(serp.text, serp.language, "serpapi");
+    if (accepted) return accepted;
   }
 
   // 6) Owned-video Data API (session or env OAuth) — last resort for your uploads
@@ -451,13 +469,16 @@ export async function fetchYouTubeTranscript(
       request: opts?.request,
     });
     if (api.ok) {
-      return okFromText(api.text, api.language, "youtube_data_api", {
+      const accepted = okFromText(api.text, api.language, "youtube_data_api", {
         ...(api.refreshedSession ? { refreshedSession: api.refreshedSession } : {}),
       });
+      if (accepted) return accepted;
     }
   }
 
-  return scraped;
+  // Prefer a clean "no_transcript" when we only saw wrong-language captions.
+  if (scraped.status === "failed") return scraped;
+  return { status: "failed", reason: "no_transcript" };
 }
 
 export function normalizePastedTranscript(raw: string): {

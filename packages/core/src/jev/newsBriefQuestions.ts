@@ -1,4 +1,4 @@
-import { choice, score } from "@typesafe-ai/sdk";
+import { choice, noul, score } from "@typesafe-ai/sdk";
 
 /**
  * Small Jev schema for news story briefing (not the full intent fan-out).
@@ -23,6 +23,12 @@ export const newsBriefQuestions = {
     caution: "Warning, risk, crisis or concern",
     opportunity: "Positive development, breakthrough or upside",
   }),
+  worthDeepDive: noul(
+    "This story is worth running a deeper AI analysis (executive brief with sources) rather than skimming the headline alone",
+  ),
+  worthGraph: noul(
+    "This story has enough named entities, concepts, or relationships to build a useful knowledge graph",
+  ),
 };
 
 export const NEWS_BRIEF_QUESTION_COUNT = Object.keys(newsBriefQuestions).length;

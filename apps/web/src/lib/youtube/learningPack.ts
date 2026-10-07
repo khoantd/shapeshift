@@ -19,15 +19,25 @@ import {
   type LearningPackRequest,
 } from "./learningPackParse";
 
-export type { LearningPackContentType, LearningPackLanguage, LearningPackRequest } from "./learningPackParse";
+export type {
+  LearningPackContentType,
+  LearningPackLanguage,
+  LearningPackDepth,
+  LearningPackAudience,
+  LearningPackRequest,
+} from "./learningPackParse";
 export {
   buildLearningPackPrompt,
   learningPackCacheKey,
   parseLearningPackContentType,
   parseLearningPackLanguage,
+  parseLearningPackDepth,
+  parseLearningPackAudience,
   parseLearningPackRequest,
   resolvePackContentType,
   LEARNING_PACK_CONTENT_TYPES,
+  LEARNING_PACK_DEPTHS,
+  LEARNING_PACK_AUDIENCES,
 } from "./learningPackParse";
 
 export type LearningPackResult = {

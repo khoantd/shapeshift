@@ -132,6 +132,39 @@ function Block({ block }: { block: MdBlock }) {
           ))}
         </ul>
       );
+    case "table":
+      return (
+        <div className="mb-4 overflow-x-auto rounded-md border border-border">
+          <table className="w-full min-w-[16rem] border-collapse text-left text-[13px] leading-5">
+            <thead className="bg-muted/50">
+              <tr>
+                {block.headers.map((cell, i) => (
+                  <th
+                    key={i}
+                    className="border-b border-border px-2.5 py-1.5 font-medium text-foreground"
+                  >
+                    <Inline spans={cell} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, ri) => (
+                <tr key={ri} className="even:bg-muted/20">
+                  {row.map((cell, ci) => (
+                    <td
+                      key={ci}
+                      className="border-b border-border px-2.5 py-1.5 align-top text-ink-2"
+                    >
+                      <Inline spans={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
     case "hr":
       return <hr className="my-4 border-border" />;
     case "answerKey":
@@ -158,7 +191,7 @@ export function LearningPackPreview({ markdown }: Props): ReactNode {
   const blocks = parseLearningPackMarkdown(markdown);
   return (
     <article
-      className="max-h-[min(70vh,36rem)] overflow-auto rounded-md border border-border bg-background px-4 py-4"
+      className="rounded-md border border-border bg-background px-4 py-4"
       aria-label="Learning pack preview"
     >
       <Blocks blocks={blocks} />

@@ -1,4 +1,4 @@
-import { type Currency, detectCurrency, toNumber } from "./common";
+import { type Currency, toNumber } from "./common";
 
 export type EmiData = {
   principal: number | null;
@@ -7,10 +7,19 @@ export type EmiData = {
   currency: Currency;
 };
 
+/** EMI defaults to VND; only USD is detected as an alternate. */
+export const EMI_DEFAULT_CURRENCY: Currency = "₫";
+
+export function detectEmiCurrency(text: string): Currency {
+  if (/\$|\busd\b|dollars?\b/i.test(text)) return "$";
+  if (/₫|\bvnd\b|đồng|\bdong\b/i.test(text)) return "₫";
+  return EMI_DEFAULT_CURRENCY;
+}
+
 const RATE_RE = /\b(\d+(?:\.\d+)?)\s*(?:%|percent|pct)/i;
 const TENURE_RE = /\b(\d+(?:\.\d+)?)\s*(years?|yrs?|y|months?|mos?|m)\b/i;
 const PRINCIPAL_RE =
-  /(?:₹|rs\.?|inr|\$|€|£)?\s*(\d[\d,]*(?:\.\d+)?)\s*(lakh|lac|lakhs|lacs|crore|crores|k)?\b/i;
+  /(?:₹|rs\.?|inr|\$|€|£|₫|vnd)?\s*(\d[\d,]*(?:\.\d+)?)\s*(lakh|lac|lakhs|lacs|crore|crores|k)?\b/i;
 
 function scalePrincipal(n: number, suffix: string | undefined): number {
   if (!suffix) return n;
@@ -52,7 +61,7 @@ export function parseEmi(text: string): EmiData {
     principal: principal !== null && Number.isFinite(principal) && principal > 0 ? principal : null,
     annualRate: annualRate !== null && Number.isFinite(annualRate) && annualRate >= 0 ? annualRate : null,
     tenureMonths: tenureMonths !== null && tenureMonths > 0 ? tenureMonths : null,
-    currency: detectCurrency(text),
+    currency: detectEmiCurrency(text),
   };
 }
 

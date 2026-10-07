@@ -1,38 +1,39 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useId, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "convex/react";
 import { motion, MotionConfig } from "motion/react";
-import { KeyRound, MapPinned, Sparkles, WifiOff } from "lucide-react";
+import { KeyRound, MapPinned, Menu, Sparkles, WifiOff, X } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import { api } from "../../../convex/_generated/api";
+import { LanguageSelector } from "../LanguageSelector";
 import { isConvexConfigured } from "../ConvexClientProvider";
+import { BrandBackdrop } from "../brand/BrandBackdrop";
+import { MeanboxLogo } from "../brand/MeanboxLogo";
 import { ProductPreview } from "./ProductPreview";
 import { SignupForm } from "./SignupForm";
 
 const FEATURES = [
   {
     icon: Sparkles,
-    title: "Morphs as you type",
-    description:
-      "One text box becomes the right UI — events, checklists, places, news, splits, and thirty-plus more — without menus or mode switches.",
+    titleKey: "featureMorphTitle",
+    descriptionKey: "featureMorphDesc",
   },
   {
     icon: KeyRound,
-    title: "Jev decides, code computes",
-    description:
-      "TypeSafe AI’s Jev classifies intent in parallel. Dates, amounts, places, and math stay in deterministic parsers.",
+    titleKey: "featureJevTitle",
+    descriptionKey: "featureJevDesc",
   },
   {
     icon: MapPinned,
-    title: "Places with contacts",
-    description:
-      "Search venues on the map, pin places for later (/pinned), and save people to Lead Flow — type /contact to revisit places you’ve already captured.",
+    titleKey: "featurePlacesTitle",
+    descriptionKey: "featurePlacesDesc",
   },
   {
     icon: WifiOff,
-    title: "Works offline by default",
-    description:
-      "A built-in keyword classifier keeps the demo useful with no API key. Plug in Jev when you want the full model.",
+    titleKey: "featureOfflineTitle",
+    descriptionKey: "featureOfflineDesc",
   },
 ] as const;
 
@@ -43,11 +44,19 @@ const fadeUp = {
 };
 
 function WaitlistCount() {
+  const t = useTranslations("Landing");
+  const locale = useLocale();
   const configured = isConvexConfigured();
   const waitlistCount = useQuery(api.waitlist.waitlistCount);
   if (!configured) return null;
   if (typeof waitlistCount !== "number") return null;
-  return <span>{waitlistCount.toLocaleString("en-US")} on the waitlist</span>;
+  return (
+    <span>
+      {t("waitlistCount", {
+        count: waitlistCount.toLocaleString(locale === "vi" ? "vi-VN" : "en-US"),
+      })}
+    </span>
+  );
 }
 
 function WaitlistCountSafe() {
@@ -56,156 +65,223 @@ function WaitlistCountSafe() {
 }
 
 export function WaitlistLanding() {
+  const t = useTranslations("Landing");
+  const tNav = useTranslations("Nav");
+  const menuId = useId();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
   return (
     <MotionConfig reducedMotion="user">
       <motion.div
         initial="hidden"
         animate="visible"
-        className="flex min-h-screen flex-col bg-background text-foreground"
+        className="relative flex min-h-screen flex-col bg-background text-foreground"
       >
-        <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
-          <div className="flex items-center gap-2.5">
-            <span className="flex size-7 items-center justify-center rounded-md border border-border bg-background">
-              <span className="size-2 rounded-sm bg-brand" aria-hidden />
-            </span>
-            <span className="text-sm font-semibold tracking-tight">Shapeshift</span>
-          </div>
-          <nav className="flex items-center gap-5">
-            <a
-              href="#features"
-              className="nav-underline cursor-pointer text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            >
-              Features
-            </a>
+        <header className="relative z-10 overflow-hidden border-b border-border/50">
+          <BrandBackdrop src="/brand/header.jpg" scrub="heavy" position="center bottom" />
+          <div className="relative mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-6 py-5">
             <Link
-              href="/demo"
-              className="cursor-pointer text-sm font-medium text-foreground transition-colors duration-150 ease-out hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              href="/"
+              className="inline-flex min-w-0 cursor-pointer items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              Try the demo
+              <MeanboxLogo
+                variant="lockup"
+                className="h-7 w-auto max-w-[10rem] object-contain object-left sm:h-8 sm:max-w-none"
+                priority
+              />
             </Link>
-          </nav>
+            <nav className="flex items-center gap-2 sm:gap-5">
+              <LanguageSelector />
+              <a
+                href="#features"
+                className="nav-underline hidden cursor-pointer text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:inline"
+              >
+                {tNav("features")}
+              </a>
+              <Link
+                href="/gadgets"
+                className="hidden cursor-pointer text-sm font-medium text-foreground transition-colors duration-150 ease-out hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:inline"
+              >
+                {tNav("openGadgets")}
+              </Link>
+              <button
+                type="button"
+                className="inline-flex size-11 cursor-pointer items-center justify-center rounded-md text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:hidden"
+                aria-expanded={menuOpen}
+                aria-controls={menuId}
+                aria-label={menuOpen ? tNav("closeMenu") : tNav("openMenu")}
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                {menuOpen ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
+              </button>
+            </nav>
+          </div>
+          {menuOpen ? (
+            <div
+              id={menuId}
+              role="dialog"
+              aria-label={tNav("menu")}
+              className="relative border-t border-border/50 bg-background/95 px-6 py-3 sm:hidden"
+            >
+              <nav className="flex flex-col gap-1">
+                <a
+                  href="#features"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex min-h-11 cursor-pointer items-center rounded-md px-3 text-[15px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  {tNav("features")}
+                </a>
+                <Link
+                  href="/gadgets"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex min-h-11 cursor-pointer items-center rounded-md px-3 text-[15px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  {tNav("openGadgets")}
+                </Link>
+              </nav>
+            </div>
+          ) : null}
         </header>
 
-        <main id="main">
-          <section className="mx-auto w-full max-w-5xl px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
-            <motion.p
-              variants={fadeUp}
-              transition={{ duration: 0.45 }}
-              className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase"
-            >
-              Now in private beta
-            </motion.p>
-            <motion.h1
-              variants={fadeUp}
-              transition={{ duration: 0.45, delay: 0.08 }}
-              className="mt-5 max-w-3xl text-4xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-6xl"
-            >
-              An input that becomes what you mean.
-            </motion.h1>
-            <motion.p
-              variants={fadeUp}
-              transition={{ duration: 0.45, delay: 0.16 }}
-              className="mt-6 max-w-xl text-base leading-7 text-pretty text-muted-foreground sm:text-lg sm:leading-8"
-            >
-              Shapeshift morphs a single text box into the right UI as you type — events, places,
-              news, checklists, and more. Powered by TypeSafe AI&apos;s Jev. Join the waitlist for
-              early access.
-            </motion.p>
-            <motion.div
-              variants={fadeUp}
-              transition={{ duration: 0.45, delay: 0.24 }}
-              className="mt-10"
-            >
-              <SignupForm />
-            </motion.div>
-            <motion.div
-              variants={fadeUp}
-              transition={{ duration: 0.45, delay: 0.3 }}
-              className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground"
-            >
-              <WaitlistCountSafe />
-              <span className="hidden h-3 w-px bg-border sm:inline-block" aria-hidden />
-              <span>Invites sent weekly</span>
-              <span className="hidden h-3 w-px bg-border sm:inline-block" aria-hidden />
-              <Link
-                href="/demo"
-                className="cursor-pointer underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        <main id="main" className="relative z-10">
+          <section className="relative overflow-hidden">
+            <BrandBackdrop src="/brand/hero.jpg" scrub="light" position="center" />
+            <div className="relative mx-auto w-full max-w-5xl px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
+              <motion.p
+                variants={fadeUp}
+                transition={{ duration: 0.45 }}
+                className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase"
               >
-                Or try the live demo
-              </Link>
-            </motion.div>
-
-            <motion.div
-              variants={fadeUp}
-              transition={{ duration: 0.5, delay: 0.38 }}
-              className="mt-14 sm:mt-16"
-            >
-              <ProductPreview />
-            </motion.div>
-          </section>
-
-          <div className="mx-auto w-full max-w-5xl px-6">
-            <div className="h-px w-full bg-border/70" />
-          </div>
-
-          <section id="features" className="mx-auto w-full max-w-5xl scroll-mt-8 px-6 py-20 sm:py-24">
-            <div className="flex flex-col gap-3">
-              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Less chrome. More meaning.</h2>
-              <p className="max-w-lg text-sm leading-6 text-muted-foreground sm:text-base">
-                One morphing input for planning, places, and capture. Everything else was deliberately
-                left out.
-              </p>
-            </div>
-            <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-border/70 bg-border/70 sm:grid-cols-2">
-              {FEATURES.map((feature, index) => (
-                <motion.div
-                  key={feature.title}
-                  variants={fadeUp}
-                  transition={{
-                    duration: 0.45,
-                    delay: 0.06 * index,
-                  }}
-                  className="flex flex-col gap-4 bg-background p-7 sm:p-8"
-                >
-                  <feature.icon className="size-5 text-foreground/70" strokeWidth={1.5} aria-hidden />
-                  <div>
-                    <h3 className="text-sm font-medium tracking-tight">{feature.title}</h3>
-                    <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{feature.description}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </section>
-
-          <div className="mx-auto w-full max-w-5xl px-6">
-            <div className="h-px w-full bg-border/70" />
-          </div>
-
-          <section className="mx-auto w-full max-w-5xl px-6 py-20 sm:py-24">
-            <div className="flex flex-col gap-6">
-              <h2 className="max-w-xl text-2xl font-semibold tracking-tight sm:text-3xl">
-                Be first through the door.
-              </h2>
-              <p className="max-w-md text-sm leading-6 text-muted-foreground sm:text-base">
-                Invites go out weekly, in the order people joined. Save your place and we&apos;ll take
-                it from there.
-              </p>
-              <div className="mt-2">
+                {t("beta")}
+              </motion.p>
+              <motion.h1
+                variants={fadeUp}
+                transition={{ duration: 0.45, delay: 0.08 }}
+                className="mt-5 max-w-3xl text-4xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-6xl"
+              >
+                {t("headline")}
+              </motion.h1>
+              <motion.p
+                variants={fadeUp}
+                transition={{ duration: 0.45, delay: 0.16 }}
+                className="mt-6 max-w-xl text-base leading-7 text-pretty text-muted-foreground sm:text-lg sm:leading-8"
+              >
+                {t("subhead")}
+              </motion.p>
+              <motion.div
+                variants={fadeUp}
+                transition={{ duration: 0.45, delay: 0.24 }}
+                className="mt-10"
+              >
                 <SignupForm />
+              </motion.div>
+              <motion.div
+                variants={fadeUp}
+                transition={{ duration: 0.45, delay: 0.3 }}
+                className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground"
+              >
+                <WaitlistCountSafe />
+                <span className="hidden h-3 w-px bg-border sm:inline-block" aria-hidden />
+                <span>{t("invitesWeekly")}</span>
+                <span className="hidden h-3 w-px bg-border sm:inline-block" aria-hidden />
+                <Link
+                  href="/gadgets"
+                  className="cursor-pointer underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  {t("orTryGadgets")}
+                </Link>
+              </motion.div>
+
+              <motion.div
+                variants={fadeUp}
+                transition={{ duration: 0.5, delay: 0.38 }}
+                className="mt-14 sm:mt-16"
+              >
+                <ProductPreview />
+              </motion.div>
+            </div>
+          </section>
+
+          <div className="mx-auto w-full max-w-5xl px-6">
+            <div className="h-px w-full bg-border/70" />
+          </div>
+
+          <section id="features" className="relative scroll-mt-8 overflow-hidden">
+            <BrandBackdrop src="/brand/features.jpg" scrub="medium" position="center" />
+            <div className="relative mx-auto w-full max-w-5xl px-6 py-20 sm:py-24">
+              <div className="flex flex-col gap-3">
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  {t("featuresTitle")}
+                </h2>
+                <p className="max-w-lg text-sm leading-6 text-muted-foreground sm:text-base">
+                  {t("featuresSub")}
+                </p>
+              </div>
+              <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-border/70 bg-border/70 sm:grid-cols-2">
+                {FEATURES.map((feature, index) => (
+                  <motion.div
+                    key={feature.titleKey}
+                    variants={fadeUp}
+                    transition={{
+                      duration: 0.45,
+                      delay: 0.06 * index,
+                    }}
+                    className="flex flex-col gap-4 bg-background/90 p-7 backdrop-blur-sm sm:p-8"
+                  >
+                    <feature.icon className="size-5 text-foreground/70" strokeWidth={1.5} aria-hidden />
+                    <div>
+                      <h3 className="text-sm font-medium tracking-tight">{t(feature.titleKey)}</h3>
+                      <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                        {t(feature.descriptionKey)}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <div className="mx-auto w-full max-w-5xl px-6">
+            <div className="h-px w-full bg-border/70" />
+          </div>
+
+          <section className="relative overflow-hidden">
+            <BrandBackdrop src="/brand/main.jpg" scrub="heavy" position="center bottom" />
+            <div className="relative mx-auto w-full max-w-5xl px-6 py-20 sm:py-24">
+              <div className="flex flex-col gap-6">
+                <h2 className="max-w-xl text-2xl font-semibold tracking-tight sm:text-3xl">
+                  {t("ctaTitle")}
+                </h2>
+                <p className="max-w-md text-sm leading-6 text-muted-foreground sm:text-base">
+                  {t("ctaBody")}
+                </p>
+                <div className="mt-2">
+                  <SignupForm />
+                </div>
               </div>
             </div>
           </section>
         </main>
 
-        <footer className="mt-auto border-t border-border/70">
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 px-6 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <p>© {new Date().getFullYear()} Shapeshift. All rights reserved.</p>
+        <footer className="relative z-10 mt-auto overflow-hidden border-t border-border/70">
+          <BrandBackdrop src="/brand/header.jpg" scrub="heavy" position="center top" />
+          <div className="relative mx-auto flex w-full max-w-5xl flex-col gap-2 px-6 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <p>{t("footerRights", { year: new Date().getFullYear() })}</p>
             <p>
               <Link
-                href="/demo"
+                href="/gadgets"
                 className="cursor-pointer underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
-                Open the demo
+                {tNav("openGadgets")}
               </Link>
             </p>
           </div>

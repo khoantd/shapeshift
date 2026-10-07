@@ -1,11 +1,11 @@
-# Shapeshift
+# Meanbox
 
 **An input that becomes what you mean.** One text box that morphs into the right UI as you type — an event card, a checklist, a timer, a color picker, a bill splitter, a poll, a converter and more.
 
 <p align="center">
   <img src="docs/demo.gif" alt="Typing 'dinner with priya friday 8pm on zoom' morphs the text box into an event card, then a shopping checklist" width="820">
   <br>
-  <sub><a href="https://shapeshiftui.vercel.app"><b>Join the waitlist</b></a> · <a href="https://shapeshiftui.vercel.app/demo"><b>Try the demo</b></a> · <a href="docs/demo.mp4">Watch the full 60-second demo (1080p60)</a></sub>
+  <sub><a href="https://shapeshiftui.vercel.app"><b>Join the waitlist</b></a> · <a href="https://shapeshiftui.vercel.app/gadgets"><b>Open gadgets</b></a> · <a href="docs/demo.mp4">Watch the full 60-second demo (1080p60)</a></sub>
 </p>
 
 ```
@@ -30,7 +30,7 @@ bun install
 bun dev
 ```
 
-Open http://localhost:3000 for the waitlist landing, or http://localhost:3000/demo to start typing. Press <kbd>/</kbd> to see every card type.
+Open http://localhost:3000 for the waitlist landing, or http://localhost:3000/gadgets to start typing. Press <kbd>/</kbd> to see every card type.
 
 ### Waitlist (Convex)
 
@@ -58,7 +58,7 @@ cp .env.example apps/web/.env.local
 # then set TYPESAFE_API_KEY=... (get one at https://console.typesafe.ai/keys)
 ```
 
-Restart `bun dev`. The latency readout in the bottom-right corner switches from `jev-offline` to `jev-1.13.0`. The key is only ever read on the server (`/api/intent`); it never reaches the browser. If the API is unreachable or rate-limited, Shapeshift quietly falls back to offline mode.
+Restart `bun dev`. The latency readout in the bottom-right corner switches from `jev-offline` to `jev-1.13.0`. The key is only ever read on the server (`/api/intent`); it never reaches the browser. If the API is unreachable or rate-limited, Meanbox quietly falls back to offline mode.
 
 | Variable | Default | What it does |
 | --- | --- | --- |

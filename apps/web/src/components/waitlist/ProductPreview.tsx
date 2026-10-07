@@ -10,7 +10,7 @@ export function ProductPreview() {
         <span className="size-2 rounded-full bg-border" aria-hidden />
         <span className="size-2 rounded-full bg-border" aria-hidden />
         <span className="size-2 rounded-full bg-border" aria-hidden />
-        <span className="ml-3 text-[11px] text-muted-foreground">shapeshift — input</span>
+        <span className="ml-3 text-[11px] text-muted-foreground">meanbox — input</span>
       </div>
       <div className="space-y-4 p-4 sm:p-5">
         <div className="rounded-2xl border border-border/80 bg-background px-4 py-3 shadow-xs">

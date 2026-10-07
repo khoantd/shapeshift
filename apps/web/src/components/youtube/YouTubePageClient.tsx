@@ -10,35 +10,47 @@ import {
   useTransition,
 } from "react";
 import {
-  BookOpen,
-  Download,
   ExternalLink,
   Flag,
-  History,
   LoaderCircle,
-  LogIn,
-  LogOut,
   Play,
-  Search,
   ShieldCheck,
-  Video,
   X,
 } from "lucide-react";
+import { useLocale } from "next-intl";
 import type { VideoBriefTone, VideoTopic } from "@shapeshift/core/jev/videoClassify";
 import { ConceptOverlay } from "@/components/youtube/ConceptOverlay";
-import { LearningPackPreview } from "@/components/youtube/LearningPackPreview";
+import { WatchCompanion } from "@/components/youtube/WatchCompanion";
+import { YouTubeHomeEmptyState } from "@/components/youtube/YouTubeHomeEmptyState";
 import {
   YouTubePlayer,
   type YouTubePlayerHandle,
 } from "@/components/youtube/YouTubePlayer";
+import { YouTubeSearchPanel } from "@/components/youtube/YouTubeSearchPanel";
+import {
+  YouTubeStudyPanel,
+  type StudyTab,
+} from "@/components/youtube/YouTubeStudyPanel";
+import type { GraphPayload } from "@/lib/neo4j/types";
+import { BrandBackdrop } from "@/components/brand/BrandBackdrop";
+import { toAiLanguage } from "@/lib/i18n/appLocale";
 import { SITE_CHROME_OFFSET_CLASS } from "@/lib/site-chrome";
 import { formatYouTubeDuration } from "@/lib/youtube/format";
+import type { HistoryPack } from "@/lib/youtube/historyPack";
 import {
   activeConceptAt,
   extractKeyConcepts,
 } from "@/lib/youtube/learningPackConcepts";
-import { resolvePackContentType } from "@/lib/youtube/learningPackParse";
-import { extractYouTubeVideoId, looksLikeYouTubeUrl, youtubeWatchUrl } from "@/lib/youtube/url";
+import { resolvePackContentType, type LearningPackLanguage } from "@/lib/youtube/learningPackParse";
+import { summarizeLearningPackStats } from "@/lib/youtube/learningPackHistoryStats";
+import {
+  STUDY_PANEL_DEFAULT_WIDTH,
+  clampStudyPanelWidth,
+  readStudyPanelWidth,
+  studyPanelMaxWidth,
+  writeStudyPanelWidth,
+} from "@/lib/youtube/studyPanelWidth";
+import { extractYouTubeVideoId, looksLikeYouTubeUrl, youtubeThumbnailUrl, youtubeWatchUrl } from "@/lib/youtube/url";
 import type { YouTubeVideo } from "@/lib/youtube/types";
 
 const DEBOUNCE_MS = 400;
@@ -111,30 +123,32 @@ type LearningPackResponse = {
   language?: string;
   error?: string;
   saved?: boolean;
+  historyPackId?: string | null;
+  saveError?: string | null;
+  graphPayload?: GraphPayload | null;
 };
 
-type HistoryPack = {
-  id: string;
-  videoId: string;
-  videoUrl: string;
-  videoTitle: string;
-  channelTitle: string | null;
-  markdown: string;
-  transcript: string | null;
-  createdAt: number;
+type SummarizeResponse = {
+  success: boolean;
+  text?: string;
+  model?: string | null;
+  cached?: boolean;
+  language?: string;
+  error?: string;
+  saved?: boolean;
+  saveError?: string | null;
 };
 
-function formatRelativeTime(ms: number): string {
-  const delta = Date.now() - ms;
-  const mins = Math.floor(delta / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 48) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(ms).toLocaleDateString();
-}
+type SummarizeGetResponse = {
+  success: boolean;
+  summaryVi?: string | null;
+  summaryEn?: string | null;
+  error?: string;
+};
+
+type SummaryByLang = Record<LearningPackLanguage, string | null>;
+
+const EMPTY_SUMMARY_BY_LANG: SummaryByLang = { vi: null, en: null };
 
 function topicLabel(topic: VideoTopic): string {
   return topic.charAt(0).toUpperCase() + topic.slice(1);
@@ -175,6 +189,7 @@ export function YouTubePageClient({
   initialOAuthHasSub,
 }: Props) {
   const listboxId = useId();
+  const locale = useLocale();
   const [query, setQuery] = useState("");
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [selected, setSelected] = useState<YouTubeVideo | null>(null);
@@ -197,6 +212,15 @@ export function YouTubePageClient({
   const [packMeta, setPackMeta] = useState<{ model?: string | null; cached?: boolean } | null>(
     null,
   );
+  const [summaryLang, setSummaryLang] = useState<LearningPackLanguage>(() =>
+    toAiLanguage(locale),
+  );
+  const [summaryByLang, setSummaryByLang] = useState<SummaryByLang>(EMPTY_SUMMARY_BY_LANG);
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [summaryMeta, setSummaryMeta] = useState<{ model?: string | null; cached?: boolean } | null>(
+    null,
+  );
   const [oauthConnected, setOauthConnected] = useState(initialOAuthConnected);
   const [oauthEmail, setOauthEmail] = useState<string | null>(initialOAuthEmail);
   const [oauthHasSub, setOauthHasSub] = useState(initialOAuthHasSub);
@@ -206,17 +230,31 @@ export function YouTubePageClient({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
   const [playbackSec, setPlaybackSec] = useState(0);
+  const [studyTab, setStudyTab] = useState<StudyTab>("prepare");
+  const [sessionGraphPayload, setSessionGraphPayload] = useState<GraphPayload | null>(null);
+  const [searchPanelCollapsed, setSearchPanelCollapsed] = useState(false);
+  const [studyPanelCollapsed, setStudyPanelCollapsed] = useState(false);
+  const [studyPanelWidth, setStudyPanelWidth] = useState(STUDY_PANEL_DEFAULT_WIDTH);
+  // Stable SSR default — real max applied in useEffect after mount (avoids hydration mismatch).
+  const [studyPanelMax, setStudyPanelMax] = useState(STUDY_PANEL_DEFAULT_WIDTH);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const historySectionRef = useRef<HTMLDivElement>(null);
+  const mainSectionRef = useRef<HTMLElement>(null);
   const ytPlayerRef = useRef<YouTubePlayerHandle | null>(null);
   const abortSearchRef = useRef<AbortController | null>(null);
   const abortClassifyRef = useRef<AbortController | null>(null);
   const abortTranscriptRef = useRef<AbortController | null>(null);
   const abortPackRef = useRef<AbortController | null>(null);
+  const abortSummaryRef = useRef<AbortController | null>(null);
   const classifyKeyRef = useRef<string>("");
   const transcriptVideoRef = useRef<string>("");
   /** When true, next selected?.videoId effect restores history (keep pack, skip classify/transcript). */
   const historyRestoreRef = useRef(false);
+
+  useEffect(() => {
+    setSummaryLang(toAiLanguage(locale));
+  }, [locale]);
 
   const resetPackState = useCallback(() => {
     setTranscript("");
@@ -224,9 +262,25 @@ export function YouTubePageClient({
     setPackText(null);
     setPackError(null);
     setPackMeta(null);
+    setSummaryByLang(EMPTY_SUMMARY_BY_LANG);
+    setSummaryError(null);
+    setSummaryMeta(null);
+    setSummaryLang(toAiLanguage(locale));
     setActiveHistoryId(null);
+    setSessionGraphPayload(null);
+    setStudyTab("prepare");
     abortTranscriptRef.current?.abort();
     abortPackRef.current?.abort();
+    abortSummaryRef.current?.abort();
+  }, [locale]);
+
+  const scrollMainIntoView = useCallback(() => {
+    if (typeof window === "undefined") return;
+    // Only scroll on smaller viewports where the aside stacks above the player.
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+    requestAnimationFrame(() => {
+      mainSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }, []);
 
   const loadHistory = useCallback(async () => {
@@ -259,10 +313,30 @@ export function YouTubePageClient({
       }
       setOauthHasSub(true);
       setHistoryPacks(
-        body.packs.map((pack) => ({
-          ...pack,
-          videoUrl: pack.videoUrl || youtubeWatchUrl(pack.videoId),
-        })),
+        body.packs.map((pack) => {
+          const graphPayload = pack.graphPayload ?? null;
+          const stats = summarizeLearningPackStats({
+            markdown: pack.markdown,
+            graphPayload,
+            contentType: pack.contentType,
+          });
+          return {
+            ...pack,
+            videoUrl: pack.videoUrl || youtubeWatchUrl(pack.videoId),
+            thumbnailUrl:
+              pack.thumbnailUrl || youtubeThumbnailUrl(pack.videoId),
+            graphPayload,
+            contentType: pack.contentType ?? stats.contentType,
+            conceptCount:
+              typeof pack.conceptCount === "number"
+                ? pack.conceptCount
+                : stats.conceptCount,
+            termCount:
+              typeof pack.termCount === "number"
+                ? pack.termCount
+                : stats.termCount,
+          };
+        }),
       );
     } catch {
       setHistoryError("Could not load history");
@@ -503,12 +577,14 @@ export function YouTubePageClient({
       historyRestoreRef.current = false;
       // Enrich player metadata only — pack already restored from history.
       void loadDetailsAndClassify(selected, "", { classify: false });
+      void loadSavedSummaries(selected.videoId);
       return;
     }
     resetPackState();
     const searchQuery = looksLikeYouTubeUrl(query) ? "" : query;
     void loadDetailsAndClassify(selected, searchQuery);
     void tryFetchTranscript(selected.videoId);
+    void loadSavedSummaries(selected.videoId);
     // Only re-run when the selected video changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: classify against current query at selection time
   }, [selected?.videoId]);
@@ -519,15 +595,21 @@ export function YouTubePageClient({
     setSelected(video);
     setPlaying(false);
     setActiveIndex(-1);
+    setStudyTab("prepare");
+    scrollMainIntoView();
   };
 
-  const openHistoryPack = (item: HistoryPack) => {
+  const openHistoryPack = (
+    item: HistoryPack,
+    options?: { studyTab?: StudyTab },
+  ) => {
     const sameVideo = selected?.videoId === item.videoId;
     // Only skip classify/transcript when the selection effect will run for a new videoId.
     historyRestoreRef.current = !sameVideo;
     abortClassifyRef.current?.abort();
     abortTranscriptRef.current?.abort();
     abortPackRef.current?.abort();
+    abortSummaryRef.current?.abort();
     setClassify(null);
     setClassifyError(null);
     setClassifyBusy(false);
@@ -543,20 +625,49 @@ export function YouTubePageClient({
     setPackMeta(null);
     setPackBusy(false);
     setPackError(null);
+    setSummaryByLang(EMPTY_SUMMARY_BY_LANG);
+    setSummaryError(null);
+    setSummaryMeta(null);
+    setSummaryLang("vi");
+    setSummaryBusy(false);
     setActiveHistoryId(item.id);
+    setSessionGraphPayload(item.graphPayload);
     setPlaybackSec(0);
+    setStudyTab(options?.studyTab ?? "pack");
+    if (options?.studyTab === "graph") {
+      setStudyPanelCollapsed(false);
+    }
     setSelected({
       videoId: item.videoId,
       title: item.videoTitle,
       ...(item.channelTitle ? { channelTitle: item.channelTitle } : {}),
-      thumbnailUrl: `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+      thumbnailUrl: item.thumbnailUrl || youtubeThumbnailUrl(item.videoId),
     });
     setPlaying(true);
     setActiveIndex(-1);
+    scrollMainIntoView();
     if (!savedTranscript) {
       void tryFetchTranscript(item.videoId);
     }
+    // Same videoId skips the selected effect — still restore summaries.
+    if (sameVideo) {
+      void loadSavedSummaries(item.videoId);
+    }
   };
+
+  const focusSearch = useCallback(() => {
+    setSearchPanelCollapsed(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  const onTopicSelect = useCallback(
+    (topic: string) => {
+      setSearchPanelCollapsed(false);
+      setQuery(topic);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [],
+  );
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!videos.length) return;
@@ -607,7 +718,7 @@ export function YouTubePageClient({
           channelTitle: selected.channelTitle,
           contentType,
           transcript: text,
-          language: "en",
+          language: toAiLanguage(locale),
           duration,
         }),
       });
@@ -622,13 +733,16 @@ export function YouTubePageClient({
 
       setPackText(body.text);
       setPackMeta({ model: body.model, cached: body.cached });
-      setActiveHistoryId(null);
+      setActiveHistoryId(body.historyPackId ?? null);
+      setSessionGraphPayload(body.graphPayload ?? null);
+      setStudyTab("pack");
       setPackBusy(false);
       if (body.saved) setOauthHasSub(true);
       if (oauthConnected) void loadHistory();
       if (oauthConnected && body.saved === false) {
         setHistoryError(
-          "Pack generated but not saved to history. Sign out and sign in again, then regenerate.",
+          body.saveError ??
+            "Pack generated but not saved to history. Sign out and sign in again, then regenerate.",
         );
       }
     } catch (e) {
@@ -637,6 +751,81 @@ export function YouTubePageClient({
       setPackError(e instanceof Error ? e.message : "Could not generate learning pack");
     }
   };
+
+  const summarizeTranscript = async () => {
+    if (!selected) return;
+    const text = transcript.trim();
+    if (text.length < 80) {
+      setSummaryError("Paste more of the transcript (at least a few spoken lines).");
+      return;
+    }
+    if (!perplexityConfigured) {
+      setSummaryError(perplexitySetupMessage ?? "PERPLEXITY_API_KEY is not set.");
+      return;
+    }
+
+    abortSummaryRef.current?.abort();
+    const ac = new AbortController();
+    abortSummaryRef.current = ac;
+    setSummaryBusy(true);
+    setSummaryError(null);
+
+    const duration = formatYouTubeDuration(selected.duration) ?? undefined;
+    const lang = summaryLang;
+
+    try {
+      const res = await fetch("/api/youtube/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: ac.signal,
+        body: JSON.stringify({
+          videoId: selected.videoId,
+          title: selected.title,
+          channelTitle: selected.channelTitle,
+          transcript: text,
+          language: lang,
+          duration,
+        }),
+      });
+      const body = (await res.json()) as SummarizeResponse;
+      if (ac.signal.aborted) return;
+
+      if (!body.success || !body.text) {
+        setSummaryError(body.error ?? "Could not generate summary");
+        setSummaryBusy(false);
+        return;
+      }
+
+      setSummaryByLang((prev) => ({ ...prev, [lang]: body.text! }));
+      setSummaryMeta({ model: body.model, cached: body.cached });
+      setSummaryBusy(false);
+      if (body.saved) setOauthHasSub(true);
+      if (oauthConnected && body.saved === false && body.saveError) {
+        setHistoryError(body.saveError);
+      }
+    } catch (e) {
+      if (ac.signal.aborted) return;
+      setSummaryBusy(false);
+      setSummaryError(e instanceof Error ? e.message : "Could not generate summary");
+    }
+  };
+
+  const loadSavedSummaries = useCallback(async (videoId: string) => {
+    if (!oauthConnected) return;
+    try {
+      const res = await fetch(
+        `/api/youtube/summarize?videoId=${encodeURIComponent(videoId)}`,
+      );
+      const body = (await res.json()) as SummarizeGetResponse;
+      if (!body.success) return;
+      setSummaryByLang({
+        vi: body.summaryVi?.trim() || null,
+        en: body.summaryEn?.trim() || null,
+      });
+    } catch {
+      // Non-fatal — user can still generate a fresh summary.
+    }
+  }, [oauthConnected]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -693,13 +882,26 @@ export function YouTubePageClient({
     inputRef.current?.focus();
   };
 
+  // Keep study tab valid when pack/selection changes.
+  useEffect(() => {
+    if (studyTab === "pack" && !packText) setStudyTab("prepare");
+    else if (studyTab === "graph" && (!packText || !selected)) {
+      setStudyTab(packText ? "pack" : "prepare");
+    } else if (studyTab === "prepare" && !selected && packText) {
+      setStudyTab("pack");
+    }
+  }, [studyTab, packText, selected]);
+
   const showResultsPanel =
     serverConfigured &&
-    (searchBusy || searchError || videos.length > 0 || query.trim().length >= 2);
+    (searchBusy || Boolean(searchError) || videos.length > 0 || query.trim().length >= 2);
 
   const duration = formatYouTubeDuration(selected?.duration);
   const flashcardsCsv = packText ? flashcardsToCsv(packText) : null;
   const canGenerate = transcript.trim().length >= 80 && !packBusy && perplexityConfigured;
+  const canSummarize =
+    transcript.trim().length >= 80 && !summaryBusy && perplexityConfigured;
+  const summaryText = summaryByLang[summaryLang];
   const packDownloadId =
     selected?.videoId ??
     historyPacks.find((p) => p.id === activeHistoryId)?.videoId ??
@@ -716,600 +918,371 @@ export function YouTubePageClient({
   const conceptUpcoming =
     activeConcept != null && playbackSec < activeConcept.startSec;
 
+  // SSR + first client paint use false; sync to viewport after mount (avoids hydration mismatch).
+  const [isLg, setIsLg] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setIsLg(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const applyViewport = () => {
+      const max = studyPanelMaxWidth(window.innerWidth);
+      setStudyPanelMax(max);
+      setStudyPanelWidth((prev) => clampStudyPanelWidth(prev, max));
+    };
+    const stored = readStudyPanelWidth();
+    const max = studyPanelMaxWidth(window.innerWidth);
+    setStudyPanelMax(max);
+    setStudyPanelWidth(
+      clampStudyPanelWidth(stored ?? STUDY_PANEL_DEFAULT_WIDTH, max),
+    );
+    window.addEventListener("resize", applyViewport);
+    return () => window.removeEventListener("resize", applyViewport);
+  }, []);
+
+  const onStudyWidthChange = useCallback(
+    (next: number) => {
+      setStudyPanelWidth(clampStudyPanelWidth(next, studyPanelMax));
+    },
+    [studyPanelMax],
+  );
+
+  const onStudyWidthCommit = useCallback(
+    (next: number) => {
+      const clamped = clampStudyPanelWidth(next, studyPanelMax);
+      setStudyPanelWidth(clamped);
+      writeStudyPanelWidth(clamped);
+    },
+    [studyPanelMax],
+  );
+
+  const showStudy = Boolean(selected || packText);
+
+  const searchPanelProps = {
+    collapsed: searchPanelCollapsed,
+    onCollapsedChange: setSearchPanelCollapsed,
+    listboxId,
+    inputRef,
+    historySectionRef,
+    serverConfigured,
+    setupMessage,
+    youtubeOAuthClientConfigured,
+    query,
+    onQueryChange: setQuery,
+    onKeyDown,
+    onClear: clearSelection,
+    videos,
+    selected,
+    activeIndex,
+    searchBusy,
+    searchError,
+    showResultsPanel,
+    onSelectVideo: selectVideo,
+    oauthConnected,
+    oauthEmail,
+    oauthHasSub,
+    oauthBusy,
+    onSignOut: () => void signOutYouTube(),
+    historyPacks,
+    historyBusy,
+    historyError,
+    activeHistoryId,
+    onOpenHistoryPack: openHistoryPack,
+  };
+
+  const studyPanelProps = {
+    collapsed: studyPanelCollapsed,
+    onCollapsedChange: setStudyPanelCollapsed,
+    width: studyPanelWidth,
+    maxWidth: studyPanelMax,
+    onWidthChange: onStudyWidthChange,
+    onWidthCommit: onStudyWidthCommit,
+    studyTab,
+    onStudyTabChange: setStudyTab,
+    selectedVideoId: selected?.videoId ?? null,
+    selectedTitle: selected?.title ?? null,
+    selectedChannelTitle: selected?.channelTitle,
+    contentType: resolvePackContentType(classify?.topic),
+    transcript,
+    onTranscriptChange: setTranscript,
+    transcriptBusy,
+    transcriptHint,
+    onRetryTranscript: () => {
+      if (selected) void tryFetchTranscript(selected.videoId);
+    },
+    packText,
+    packBusy,
+    packError,
+    packMeta,
+    canGenerate,
+    onGeneratePack: () => void generateLearningPack(),
+    summaryLang,
+    onSummaryLangChange: setSummaryLang,
+    summaryText,
+    summaryBusy,
+    summaryError,
+    summaryMeta,
+    canSummarize,
+    onSummarize: () => void summarizeTranscript(),
+    perplexityConfigured,
+    perplexitySetupMessage,
+    packDownloadId,
+    flashcardsCsv,
+    onDownloadText: downloadText,
+    playbackSec,
+    sessionGraphPayload,
+    historyPackId: activeHistoryId,
+    onGraphReady: (graph: GraphPayload) => {
+      setSessionGraphPayload(graph);
+      if (activeHistoryId) {
+        setHistoryPacks((prev) =>
+          prev.map((p) =>
+            p.id === activeHistoryId ? { ...p, graphPayload: graph } : p,
+          ),
+        );
+      }
+    },
+    onSeek: (sec: number) => {
+      setPlaying(true);
+      ytPlayerRef.current?.seekTo(sec);
+      setPlaybackSec(sec);
+    },
+  };
+
+  const openStudy = useCallback((tab?: StudyTab) => {
+    setStudyPanelCollapsed(false);
+    if (tab) setStudyTab(tab);
+  }, []);
+
+  const seekFromCompanion = useCallback((sec: number) => {
+    setPlaying(true);
+    ytPlayerRef.current?.seekTo(sec);
+    setPlaybackSec(sec);
+  }, []);
+
   return (
     <div
       className={`flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:flex-row lg:overflow-hidden ${SITE_CHROME_OFFSET_CLASS}`}
     >
-      <aside className="relative z-10 flex w-full shrink-0 flex-col border-b border-border bg-background lg:h-full lg:w-[380px] lg:overflow-hidden lg:border-r lg:border-b-0">
-        <header className="flex shrink-0 flex-col gap-4 px-4 pt-6 pb-4 sm:px-5">
-          <div>
-            <p className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-              <Video className="size-3.5" aria-hidden />
-              YouTube
-            </p>
-            <h1 className="mt-1 text-[28px] leading-8 font-[550] tracking-tight text-balance">
-              Search or paste a link
-            </h1>
-            <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
-              Find a video, classify with Jev, then generate a study-ready learning pack.
-            </p>
-          </div>
+      {isLg ? (
+        <YouTubeSearchPanel variant="sidebar" {...searchPanelProps} />
+      ) : (
+        <YouTubeSearchPanel variant="stacked" {...searchPanelProps} />
+      )}
 
-          {!serverConfigured && (
-            <div
-              role="status"
-              className="rounded-md border border-border bg-muted/50 px-3 py-3 text-[13px] leading-5 text-ink-2"
-            >
-              <p className="font-medium text-foreground">YouTube setup needed</p>
-              <p className="mt-1 text-muted-foreground">
-                {setupMessage ?? "YouTube Data API key is not configured."}
-              </p>
-            </div>
-          )}
-
-          <div className="relative">
-            <label htmlFor="youtube-search" className="sr-only">
-              Search query or YouTube URL
-            </label>
-            <Search
-              className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <input
-              ref={inputRef}
-              id="youtube-search"
-              type="search"
-              name="q"
-              autoComplete="off"
-              spellCheck={false}
-              disabled={!serverConfigured}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Topic or youtube.com / youtu.be link"
-              role="combobox"
-              aria-expanded={videos.length > 0}
-              aria-controls={listboxId}
-              aria-autocomplete="list"
-              aria-activedescendant={
-                activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined
+      <div className="relative z-0 flex min-h-[45vh] flex-1 flex-col lg:h-full lg:min-h-0 lg:flex-row lg:overflow-hidden">
+        <section
+          ref={mainSectionRef}
+          className="relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background/40"
+          aria-label={selected || packText ? "Video player" : "Watch or home"}
+        >
+          <BrandBackdrop src="/brand/main.jpg" scrub="light" position="center top" />
+          {!selected && !packText && (
+            <div className="relative z-[1] min-h-0 flex-1">
+            <YouTubeHomeEmptyState
+              historyPacks={historyPacks}
+              historyBusy={historyBusy}
+              onOpenPack={(item) => openHistoryPack(item)}
+              onOpenGraph={(item) =>
+                openHistoryPack(item, { studyTab: "graph" })
               }
-              className="h-11 w-full cursor-text rounded-md border border-border bg-background pe-10 ps-10 text-[15px] text-foreground shadow-xs outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
+              onTopicSelect={onTopicSelect}
+              onFocusSearch={focusSearch}
             />
-            {(query || selected) && (
-              <button
-                type="button"
-                onClick={clearSelection}
-                aria-label="Clear search"
-                className="absolute end-2 top-1/2 inline-flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              >
-                <X className="size-4" aria-hidden />
-              </button>
-            )}
-          </div>
-
-          {youtubeOAuthClientConfigured && (
-            <div className="flex flex-wrap items-center gap-2">
-              {oauthConnected ? (
-                <>
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[12px] text-ink-2">
-                    {oauthEmail ?? "Signed in"}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={oauthBusy}
-                    onClick={() => void signOutYouTube()}
-                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border bg-background px-2 text-[12px] font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
-                  >
-                    <LogOut className="size-3" aria-hidden />
-                    Sign out
-                  </button>
-                </>
-              ) : (
-                <a
-                  href="/api/youtube/oauth/start?returnTo=/youtube"
-                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                >
-                  <LogIn className="size-3.5" aria-hidden />
-                  Sign in with Google
-                </a>
-              )}
             </div>
           )}
-        </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 sm:px-5">
-          {showResultsPanel && (
-            <div className="flex shrink-0 flex-col gap-2">
-              <div className="flex items-baseline justify-between gap-2">
-                <h2 className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-                  Results
-                </h2>
-                {videos.length > 0 && (
-                  <p className="text-[12px] text-muted-foreground" role="status" aria-atomic="true">
-                    {searchBusy ? "Refreshing…" : `${videos.length} video${videos.length === 1 ? "" : "s"}`}
-                  </p>
-                )}
-              </div>
-
-              <ul
-                id={listboxId}
-                role="listbox"
-                aria-label="YouTube search results"
-                aria-busy={searchBusy}
-                className="divide-y divide-border overflow-hidden rounded-md border border-border bg-background"
-              >
-                {searchBusy && videos.length === 0 && (
-                  <>
-                    {[0, 1, 2].map((i) => (
-                      <li key={i} className="px-3 py-3" aria-hidden>
-                        <span className="block h-3.5 w-2/3 animate-pulse rounded bg-muted" />
-                        <span className="mt-2 block h-3 w-full animate-pulse rounded bg-muted" />
-                      </li>
-                    ))}
-                  </>
-                )}
-                {searchError && (
-                  <li className="px-3 py-3 text-[13px] text-muted-foreground" role="status">
-                    {searchError}
-                  </li>
-                )}
-                {!searchBusy && !searchError && videos.length === 0 && query.trim().length >= 2 && (
-                  <li className="px-3 py-3 text-[13px] text-muted-foreground" role="status">
-                    No videos found. Try another topic or paste a YouTube link.
-                  </li>
-                )}
-                {videos.map((video, i) => {
-                  const active = i === activeIndex;
-                  const isSelected = selected?.videoId === video.videoId;
-                  return (
-                    <li
-                      key={video.videoId}
-                      id={`${listboxId}-option-${i}`}
-                      role="option"
-                      aria-selected={isSelected || active}
-                      className={`flex items-start gap-0.5 pe-1 transition-colors duration-150 ${
-                        isSelected || active ? "bg-muted/70" : "hover:bg-muted/40"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => selectVideo(video)}
-                        className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 px-3 py-3 text-start focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
-                      >
-                        {video.thumbnailUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- external YouTube thumbnails
-                          <img
-                            src={video.thumbnailUrl}
-                            alt=""
-                            width={72}
-                            height={40}
-                            className="mt-0.5 h-10 w-[72px] shrink-0 rounded object-cover"
+          {(selected || packText) && (
+            <div className="relative z-[1] flex min-h-0 flex-1 flex-col">
+              {selected && (
+                <div className="relative z-[1] shrink-0 border-b border-border bg-background/60">
+                  <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:max-w-4xl sm:px-6 lg:max-w-none lg:px-8">
+                    <div className="relative isolate overflow-hidden rounded-md border border-border bg-black">
+                      {playing ? (
+                        <>
+                          <YouTubePlayer
+                            key={selected.videoId}
+                            videoId={selected.videoId}
+                            title={selected.title}
+                            playerRef={ytPlayerRef}
+                            onTimeUpdate={setPlaybackSec}
                           />
-                        ) : (
-                          <span className="mt-0.5 flex h-10 w-[72px] shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
-                            <Play className="size-3.5" aria-hidden />
-                          </span>
-                        )}
-                        <span className="min-w-0 flex-1">
-                          <span className="line-clamp-2 text-[13px] leading-4 font-medium text-foreground">
-                            {video.title}
-                          </span>
-                          {video.channelTitle && (
-                            <span className="mt-1 block truncate text-[12px] text-muted-foreground">
-                              {video.channelTitle}
-                            </span>
+                          {activeConcept && (
+                            <ConceptOverlay
+                              key={activeConcept.id}
+                              concept={activeConcept}
+                              upcoming={conceptUpcoming}
+                              onSeek={(sec) => {
+                                ytPlayerRef.current?.seekTo(sec);
+                                setPlaybackSec(sec);
+                              }}
+                            />
                           )}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {!showResultsPanel && serverConfigured && (
-            <div
-              className="rounded-md border border-dashed border-border px-3 py-6 text-center"
-              role="status"
-            >
-              <Search className="mx-auto size-5 text-muted-foreground" aria-hidden />
-              <p className="mt-2 text-[14px] font-medium text-foreground">Search videos</p>
-              <p className="mt-1 text-[13px] text-muted-foreground">
-                Start typing a topic, or paste a youtube.com / youtu.be link.
-              </p>
-            </div>
-          )}
-
-          {oauthConnected && (
-            <div className="flex flex-col gap-2 border-t border-border pt-3">
-              <h2 className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-                <History className="size-3.5" aria-hidden />
-                History
-              </h2>
-              {historyBusy && (
-                <p
-                  className="flex items-center gap-1.5 text-[13px] text-muted-foreground"
-                  aria-live="polite"
-                >
-                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                  Loading…
-                </p>
-              )}
-              {historyError && (
-                <p className="text-[13px] text-destructive" role="alert">
-                  {historyError}
-                </p>
-              )}
-              {!historyBusy && !historyError && historyPacks.length === 0 && (
-                <p className="text-[13px] text-muted-foreground">
-                  {oauthHasSub
-                    ? "Generate a learning pack while signed in to save it here."
-                    : "Refreshing Google session for history…"}
-                </p>
-              )}
-              {!historyBusy && historyError && !oauthHasSub && (
-                <p className="text-[12px] text-muted-foreground">
-                  Tip: use Sign out, then Sign in with Google once.
-                </p>
-              )}              {!historyBusy && historyPacks.length > 0 && (
-                <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-background">
-                  {historyPacks.map((item) => {
-                    const selectedHist = activeHistoryId === item.id;
-                    const watchUrl = item.videoUrl || youtubeWatchUrl(item.videoId);
-                    return (
-                      <li key={item.id}>
-                        <div
-                          className={`flex flex-col gap-1 px-3 py-2.5 transition-colors duration-150 ${
-                            selectedHist ? "bg-muted/70" : "hover:bg-muted/40"
-                          }`}
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPlaybackSec(0);
+                            setPlaying(true);
+                          }}
+                          className="group relative aspect-video w-full cursor-pointer bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          aria-label={`Play ${selected.title}`}
                         >
-                          <button
-                            type="button"
-                            onClick={() => openHistoryPack(item)}
-                            className="flex w-full cursor-pointer flex-col gap-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
-                          >
-                            <span className="line-clamp-1 text-[13px] font-medium text-foreground">
-                              {item.videoTitle}
+                          {selected.thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={selected.thumbnailUrl}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : null}
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/25 transition-colors duration-150 group-hover:bg-black/35">
+                            <span className="flex size-14 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-transform duration-150 group-hover:scale-105">
+                              <Play className="size-6 ms-0.5" aria-hidden />
                             </span>
-                            <span className="line-clamp-1 text-[12px] text-muted-foreground">
-                              {item.channelTitle ? `${item.channelTitle} · ` : ""}
-                              {formatRelativeTime(item.createdAt)}
-                            </span>
-                          </button>
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {packText && (
+                      <p
+                        className="mt-2 text-[12px] text-muted-foreground"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {packConcepts.length > 0
+                          ? `${packConcepts.length} key concept${packConcepts.length === 1 ? "" : "s"} — overlay while playing; also in Graph`
+                          : "No timed key concepts in pack — regenerate for overlay"}
+                      </p>
+                    )}
+
+                    <div className="flex items-start justify-between gap-3 py-4">
+                      <div className="min-w-0">
+                        <h2 className="text-[17px] leading-6 font-[550] text-pretty break-words text-foreground">
+                          {selected.title}
+                        </h2>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-muted-foreground">
+                          {selected.channelTitle && <span>{selected.channelTitle}</span>}
+                          {duration && (
+                            <>
+                              <span aria-hidden>·</span>
+                              <span>{duration}</span>
+                            </>
+                          )}
+                          {detailsBusy && (
+                            <>
+                              <span aria-hidden>·</span>
+                              <span className="inline-flex items-center gap-1">
+                                <LoaderCircle className="size-3 animate-spin" aria-hidden />
+                                Details…
+                              </span>
+                            </>
+                          )}
+                        </p>
+                        {selectedWatchUrl && (
                           <a
-                            href={watchUrl}
+                            href={selectedWatchUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex max-w-full cursor-pointer items-center gap-1 truncate text-[12px] text-muted-foreground underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            className="mt-1.5 inline-flex max-w-full cursor-pointer items-center gap-1 truncate text-[12px] text-muted-foreground underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                           >
                             <ExternalLink className="size-3 shrink-0" aria-hidden />
-                            <span className="truncate">{watchUrl}</span>
+                            <span className="truncate">Open on YouTube</span>
                           </a>
+                        )}
+
+                        <div
+                          className="mt-2.5 flex flex-wrap items-center gap-2"
+                          aria-live="polite"
+                          aria-busy={classifyBusy}
+                        >
+                          {classifyBusy && !classify && (
+                            <span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                              <LoaderCircle className="size-3 animate-spin" aria-hidden />
+                              Classifying…
+                            </span>
+                          )}
+                          {classifyError && !classify && (
+                            <span className="text-[12px] text-destructive" role="alert">
+                              {classifyError}
+                            </span>
+                          )}
+                          {classify && (
+                            <>
+                              <span className="inline-flex h-6 items-center rounded-full bg-secondary px-2 text-[12px] font-medium text-ink-2">
+                                {topicLabel(classify.topic)}
+                              </span>
+                              <span
+                                className={`inline-flex h-6 items-center gap-1 rounded-full px-2 text-[12px] font-medium ${
+                                  classify.flagged
+                                    ? "bg-destructive/15 text-destructive"
+                                    : "bg-secondary text-ink-2"
+                                }`}
+                              >
+                                {classify.flagged ? (
+                                  <Flag className="size-3" aria-hidden />
+                                ) : (
+                                  <ShieldCheck className="size-3" aria-hidden />
+                                )}
+                                {classify.flagged ? "Flag" : "OK"}
+                              </span>
+                              {classify.line && (
+                                <span className="line-clamp-1 max-w-full text-[12px] text-muted-foreground">
+                                  {classify.line}
+                                </span>
+                              )}
+                            </>
+                          )}
                         </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearSelection}
+                        aria-label="Close video"
+                        className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      >
+                        <X className="size-4" aria-hidden />
+                      </button>
+                    </div>
+
+                    <WatchCompanion
+                      packText={packText}
+                      packBusy={packBusy}
+                      canGenerate={canGenerate}
+                      onGeneratePack={() => void generateLearningPack()}
+                      summaryText={summaryText ?? null}
+                      summaryBusy={summaryBusy}
+                      summaryLang={summaryLang}
+                      onSummaryLangChange={setSummaryLang}
+                      canSummarize={canSummarize}
+                      onSummarize={() => void summarizeTranscript()}
+                      perplexityConfigured={perplexityConfigured}
+                      concepts={packConcepts}
+                      playbackSec={playbackSec}
+                      graphPayload={sessionGraphPayload}
+                      onSeek={seekFromCompanion}
+                      onOpenStudy={openStudy}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           )}
-        </div>
-      </aside>
+        </section>
 
-      <section
-        className="relative z-0 isolate flex min-h-[45vh] flex-1 flex-col lg:h-full lg:min-h-0"
-        aria-label="Video and learning pack"
-      >
-        {!selected && !packText && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-muted/20 px-6 py-16 text-center">
-            <Video className="size-8 text-muted-foreground" aria-hidden />
-            <p className="text-[15px] font-medium text-foreground">Pick a video</p>
-            <p className="max-w-sm text-[13px] leading-5 text-muted-foreground">
-              Search on the left, then open a result to play, classify, and build a learning pack.
-            </p>
-          </div>
-        )}
-
-        {(selected || packText) && (
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-            {selected && (
-              <div className="shrink-0 border-b border-border bg-background">
-                <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6">
-                  <div className="relative isolate overflow-hidden rounded-md border border-border bg-black">
-                    {playing ? (
-                      <>
-                        <YouTubePlayer
-                          key={selected.videoId}
-                          videoId={selected.videoId}
-                          title={selected.title}
-                          playerRef={ytPlayerRef}
-                          onTimeUpdate={setPlaybackSec}
-                        />
-                        {activeConcept && (
-                          <ConceptOverlay
-                            key={activeConcept.id}
-                            concept={activeConcept}
-                            upcoming={conceptUpcoming}
-                            onSeek={(sec) => {
-                              ytPlayerRef.current?.seekTo(sec);
-                              setPlaybackSec(sec);
-                            }}
-                          />
-                        )}
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPlaybackSec(0);
-                          setPlaying(true);
-                        }}
-                        className="group relative aspect-video w-full cursor-pointer bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                        aria-label={`Play ${selected.title}`}
-                      >
-                        {selected.thumbnailUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={selected.thumbnailUrl}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : null}
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/25 transition-colors duration-150 group-hover:bg-black/35">
-                          <span className="flex size-14 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-transform duration-150 group-hover:scale-105">
-                            <Play className="size-6 ms-0.5" aria-hidden />
-                          </span>
-                        </span>
-                      </button>
-                    )}
-                  </div>
-
-                  {packText && (
-                    <p
-                      className="mt-2 text-[12px] text-muted-foreground"
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {packConcepts.length > 0
-                        ? `${packConcepts.length} timed concept${packConcepts.length === 1 ? "" : "s"} — overlay on play`
-                        : "No timed key concepts in pack — regenerate for overlay"}
-                    </p>
-                  )}
-
-                  <div className="flex items-start justify-between gap-3 py-4">
-                    <div className="min-w-0">
-                      <h2 className="text-[17px] leading-6 font-[550] text-pretty break-words text-foreground">
-                        {selected.title}
-                      </h2>
-                      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-muted-foreground">
-                        {selected.channelTitle && <span>{selected.channelTitle}</span>}
-                        {duration && (
-                          <>
-                            <span aria-hidden>·</span>
-                            <span>{duration}</span>
-                          </>
-                        )}
-                        {detailsBusy && (
-                          <>
-                            <span aria-hidden>·</span>
-                            <span className="inline-flex items-center gap-1">
-                              <LoaderCircle className="size-3 animate-spin" aria-hidden />
-                              Details…
-                            </span>
-                          </>
-                        )}
-                      </p>
-                      {selectedWatchUrl && (
-                        <a
-                          href={selectedWatchUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1.5 inline-flex max-w-full cursor-pointer items-center gap-1 truncate text-[12px] text-muted-foreground underline decoration-border underline-offset-2 transition-colors duration-150 hover:text-foreground hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                        >
-                          <ExternalLink className="size-3 shrink-0" aria-hidden />
-                          <span className="truncate">{selectedWatchUrl}</span>
-                        </a>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={clearSelection}
-                      aria-label="Close video"
-                      className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                    >
-                      <X className="size-4" aria-hidden />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-4 sm:px-6">
-              {selected && (
-                <div
-                  className="rounded-md border border-border bg-card px-3 py-3 shadow-xs"
-                  aria-live="polite"
-                  aria-busy={classifyBusy}
-                >
-                  <p className="mb-2 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-                    Jev classification
-                  </p>
-                  {classifyBusy && !classify && (
-                    <p className="flex items-center gap-1.5 text-[14px] text-muted-foreground">
-                      <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                      Classifying…
-                    </p>
-                  )}
-                  {classifyError && !classify && (
-                    <p className="text-[14px] text-destructive" role="alert">
-                      {classifyError}
-                    </p>
-                  )}
-                  {classify && (
-                    <div className="flex flex-col gap-2.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex h-7 items-center rounded-full bg-secondary px-2.5 text-[13px] font-medium text-ink-2">
-                          {topicLabel(classify.topic)}
-                        </span>
-                        <span
-                          className={`inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[13px] font-medium ${
-                            classify.flagged
-                              ? "bg-destructive/15 text-destructive"
-                              : "bg-secondary text-ink-2"
-                          }`}
-                        >
-                          {classify.flagged ? (
-                            <Flag className="size-3.5" aria-hidden />
-                          ) : (
-                            <ShieldCheck className="size-3.5" aria-hidden />
-                          )}
-                          {classify.flagged ? "Flag" : "OK"}
-                        </span>
-                      </div>
-                      <p className="text-[14px] leading-5 text-ink-2">{classify.line}</p>
-                      <p className="text-[12px] text-muted-foreground">
-                        Source: {classify.source}
-                        {classify.model ? ` · ${classify.model}` : ""}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {(selected || packText) && (
-                <div
-                  className="rounded-md border border-border bg-card px-3 py-3 shadow-xs"
-                  aria-busy={packBusy || transcriptBusy}
-                >
-                  <p className="mb-2 inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
-                    <BookOpen className="size-3.5" aria-hidden />
-                    Learning pack
-                  </p>
-
-                  {selected && (
-                    <>
-                      <p className="mb-3 text-[13px] leading-5 text-ink-2">
-                        Study materials from the spoken content. Paste captions if auto-fetch fails
-                        (video → ⋯ → Show transcript).
-                      </p>
-
-                      {!perplexityConfigured && (
-                        <p className="mb-3 text-[13px] text-muted-foreground" role="status">
-                          {perplexitySetupMessage ?? "Set PERPLEXITY_API_KEY to generate packs."}
-                        </p>
-                      )}
-
-                      <label
-                        htmlFor="youtube-transcript"
-                        className="mb-1.5 block text-[13px] font-medium text-foreground"
-                      >
-                        Transcript
-                      </label>
-                      <textarea
-                        id="youtube-transcript"
-                        value={transcript}
-                        onChange={(e) => setTranscript(e.target.value)}
-                        rows={6}
-                        spellCheck={false}
-                        placeholder="Paste captions here…"
-                        className="mb-2 w-full cursor-text resize-y rounded-md border border-border bg-background px-3 py-2 font-mono text-[13px] leading-5 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40"
-                      />
-                      {transcriptBusy && (
-                        <p
-                          className="mb-2 flex items-center gap-1.5 text-[13px] text-muted-foreground"
-                          aria-live="polite"
-                        >
-                          <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                          Fetching captions…
-                        </p>
-                      )}
-                      {transcriptHint && !transcriptBusy && (
-                        <p className="mb-2 text-[13px] text-muted-foreground">{transcriptHint}</p>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={!canGenerate}
-                          onClick={() => void generateLearningPack()}
-                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md bg-foreground px-3 text-[13px] font-medium text-background transition-opacity duration-150 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {packBusy ? (
-                            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                          ) : (
-                            <BookOpen className="size-3.5" aria-hidden />
-                          )}
-                          {packBusy ? "Generating…" : "Generate learning pack"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={transcriptBusy}
-                          onClick={() => void tryFetchTranscript(selected.videoId)}
-                          className="inline-flex h-9 cursor-pointer items-center rounded-md border border-border bg-background px-3 text-[13px] font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Retry caption fetch
-                        </button>
-                      </div>
-
-                      {packError && (
-                        <p className="mt-3 text-[14px] text-destructive" role="alert">
-                          {packError}
-                        </p>
-                      )}
-                    </>
-                  )}
-
-                  {packText && (
-                    <div className={selected ? "mt-4 border-t border-border pt-4" : undefined}>
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            downloadText(
-                              `${packDownloadId}-learning-pack.md`,
-                              packText,
-                              "text/markdown;charset=utf-8",
-                            )
-                          }
-                          className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                        >
-                          <Download className="size-3.5" aria-hidden />
-                          Download .md
-                        </button>
-                        {flashcardsCsv && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadText(
-                                `${packDownloadId}-flashcards.csv`,
-                                flashcardsCsv,
-                                "text/csv;charset=utf-8",
-                              )
-                            }
-                            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[12px] font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                          >
-                            <Download className="size-3.5" aria-hidden />
-                            Flashcards CSV
-                          </button>
-                        )}
-                        {packMeta?.model && (
-                          <span className="text-[12px] text-muted-foreground">
-                            {packMeta.cached ? "Cached · " : ""}
-                            {packMeta.model}
-                          </span>
-                        )}
-                      </div>
-                      <LearningPackPreview markdown={packText} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
+        {showStudy &&
+          (isLg ? (
+            <YouTubeStudyPanel variant="sidebar" {...studyPanelProps} />
+          ) : (
+            <YouTubeStudyPanel variant="stacked" {...studyPanelProps} />
+          ))}
+      </div>
     </div>
   );
 }

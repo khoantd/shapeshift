@@ -3,6 +3,7 @@
 import { useMutation } from "convex/react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import { isConvexConfigured } from "../ConvexClientProvider";
@@ -16,6 +17,8 @@ function SuccessCard({
   state: "joined" | "already";
   position: number | null;
 }) {
+  const t = useTranslations("Landing");
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -29,11 +32,11 @@ function SuccessCard({
       </span>
       <div className="text-sm">
         <p className="font-medium text-foreground">
-          {state === "joined" ? "You're on the list." : "You're already in."}
+          {state === "joined" ? t("joinedTitle") : t("alreadyTitle")}
         </p>
         <p className="mt-0.5 text-muted-foreground">
-          {position !== null && <>Spot #{position}. </>}
-          We&apos;ll email you the moment your invite is ready.
+          {position !== null && <>{t("spot", { position })} </>}
+          {t("inviteReady")}
         </p>
       </div>
     </motion.div>
@@ -51,6 +54,7 @@ function EmailForm({
   state: FormState;
   errorMessage: string | null;
 }) {
+  const t = useTranslations("Landing");
   const [email, setEmail] = useState("");
   const inputId = `${id}-email`;
 
@@ -65,7 +69,7 @@ function EmailForm({
       <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row sm:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <label htmlFor={inputId} className="sr-only">
-            Email address
+            {t("emailLabel")}
           </label>
           <input
             id={inputId}
@@ -75,7 +79,7 @@ function EmailForm({
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder={t("emailPlaceholder")}
             disabled={state === "submitting"}
             className="h-11 w-full cursor-text rounded-xl border border-input bg-background px-4 text-sm text-foreground shadow-xs transition-[color,box-shadow] duration-150 ease-out outline-none placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
           />
@@ -95,7 +99,7 @@ function EmailForm({
                 className="inline-flex items-center gap-2"
               >
                 <Loader2 className="size-4 animate-spin" aria-hidden />
-                Joining…
+                {t("joining")}
               </motion.span>
             ) : (
               <motion.span
@@ -105,7 +109,7 @@ function EmailForm({
                 exit={{ opacity: 0 }}
                 className="inline-flex items-center gap-2"
               >
-                Join the waitlist
+                {t("joinWaitlist")}
                 <ArrowRight className="size-4" aria-hidden />
               </motion.span>
             )}
@@ -116,7 +120,7 @@ function EmailForm({
         {state === "error" ? (
           <p className="text-destructive">{errorMessage}</p>
         ) : (
-          <p>No spam, no noise. One email when we open the doors.</p>
+          <p>{t("noSpam")}</p>
         )}
       </div>
     </div>
@@ -155,6 +159,7 @@ function SignupFormConvex({ formId }: { formId: string }) {
 }
 
 function SignupFormUnavailable({ formId }: { formId: string }) {
+  const t = useTranslations("Landing");
   const [state, setState] = useState<FormState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -165,7 +170,7 @@ function SignupFormUnavailable({ formId }: { formId: string }) {
       errorMessage={errorMessage}
       onSubmit={async () => {
         setState("error");
-        setErrorMessage("Waitlist is not configured yet. Set NEXT_PUBLIC_CONVEX_URL and run convex dev.");
+        setErrorMessage(t("convexMissing"));
       }}
     />
   );

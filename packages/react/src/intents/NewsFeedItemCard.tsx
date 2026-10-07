@@ -29,6 +29,8 @@ export type NewsFeedItem = {
     line: string;
     source?: "jev" | "mock";
     query?: string | null;
+    worthDeepDive?: boolean;
+    worthGraph?: boolean;
   } | null;
 };
 

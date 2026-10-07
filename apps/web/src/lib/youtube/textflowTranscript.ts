@@ -1,5 +1,6 @@
 import "server-only";
 
+import { DEFAULT_TRANSCRIPT_PREFER_LANGS } from "./captionLanguage";
 import { parseTextFlowTranscriptResponse } from "./textflowTranscriptParse";
 import { textFlowTranscriptProxyUrl } from "./textflowTranscriptUrl";
 
@@ -31,7 +32,7 @@ function apiKey(): string {
  */
 export async function fetchTranscriptViaTextFlow(
   videoId: string,
-  opts?: { signal?: AbortSignal },
+  opts?: { preferLangs?: string[]; signal?: AbortSignal },
 ): Promise<{ text: string; language?: string } | null> {
   if (!textFlowTranscriptConfigured()) return null;
   const id = videoId.trim();
@@ -39,6 +40,9 @@ export async function fetchTranscriptViaTextFlow(
 
   const url = textFlowTranscriptProxyUrl(baseUrl());
   if (!url) return null;
+  const preferLangs = opts?.preferLangs?.length
+    ? opts.preferLangs
+    : [...DEFAULT_TRANSCRIPT_PREFER_LANGS];
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   const onAbort = () => controller.abort();
@@ -52,7 +56,11 @@ export async function fetchTranscriptViaTextFlow(
         "Content-Type": "application/json",
         "X-TextFlow-Key": apiKey(),
       },
-      body: JSON.stringify({ videoId: id }),
+      body: JSON.stringify({
+        videoId: id,
+        preferLangs,
+        lang: preferLangs[0] ?? "en",
+      }),
     });
 
     const data = await res.json().catch(() => null);

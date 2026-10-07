@@ -40,16 +40,15 @@ export async function fetchTranscriptViaSerpApi(
   if (!apiKey) return null;
 
   const langs = opts?.preferLangs?.length ? opts.preferLangs : ["en", "vi"];
-  const attempts = [...langs, undefined] as (string | undefined)[];
+  // Prefer explicit language codes only — omitting language_code often returns a geo auto-translate.
+  const attempts = [...langs];
 
   for (const languageCode of attempts) {
     const url = new URL(SERP_URL);
     url.searchParams.set("engine", "youtube_video_transcript");
     url.searchParams.set("v", videoId);
     url.searchParams.set("api_key", apiKey);
-    if (languageCode) {
-      url.searchParams.set("language_code", languageCode);
-    }
+    url.searchParams.set("language_code", languageCode);
 
     try {
       const res = await fetch(url.toString(), { signal: opts?.signal });

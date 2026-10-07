@@ -16,8 +16,10 @@ import {
   type PlaceCategoryOption,
 } from "@shapeshift/react";
 import { useQuery } from "convex/react";
+import { BrandSurface } from "@/components/brand/BrandSurface";
 import { SITE_CHROME_OFFSET_CLASS } from "@/lib/site-chrome";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   useCallback,
   useDeferredValue,
@@ -28,7 +30,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { LocateFixed, MapPin, Pin, Search, Star, Users, X } from "lucide-react";
+import { List, LocateFixed, Map as MapIcon, MapPin, Pin, Search, Star, Users, X } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type {
   MapTilesProvider,
@@ -233,6 +235,7 @@ export function PlacesPageClient({
   serverConfigured,
   setupMessage,
 }: PlacesPageClientProps) {
+  const t = useTranslations("Places");
   const router = useRouter();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
@@ -265,6 +268,7 @@ export function PlacesPageClient({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [slashDraft, setSlashDraft] = useState("");
   const [preSlashQuery, setPreSlashQuery] = useState("");
+  const [mobilePane, setMobilePane] = useState<"list" | "map">("list");
   const {
     coords: userLocation,
     status: locationStatus,
@@ -646,6 +650,7 @@ export function PlacesPageClient({
       });
       setDetailsError(null);
     }
+    setMobilePane("map");
     // Mobile layout stacks the map below the sidebar — bring the card into view.
     mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     void loadDetails(prediction.placeId, {
@@ -838,7 +843,50 @@ export function PlacesPageClient({
     <div
       className={`flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:flex-row lg:overflow-hidden ${SITE_CHROME_OFFSET_CLASS}`}
     >
-      <aside className="relative z-10 flex w-full shrink-0 flex-col border-b border-border bg-background lg:h-full lg:w-[380px] lg:overflow-hidden lg:border-r lg:border-b-0">
+      <div
+        className="flex shrink-0 items-center gap-1 border-b border-border bg-background/80 px-3 py-2 lg:hidden"
+        role="tablist"
+        aria-label={t("paneToggle")}
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobilePane === "list"}
+          onClick={() => setMobilePane("list")}
+          className={`inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md text-[13px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+            mobilePane === "list"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          }`}
+        >
+          <List className="size-4" aria-hidden />
+          {t("listPane")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobilePane === "map"}
+          onClick={() => setMobilePane("map")}
+          className={`inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md text-[13px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+            mobilePane === "map"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          }`}
+        >
+          <MapIcon className="size-4" aria-hidden />
+          {t("mapPane")}
+        </button>
+      </div>
+
+      <div
+        className={`min-h-0 flex-col overflow-hidden lg:flex lg:h-full lg:w-[380px] lg:shrink-0 ${
+          mobilePane === "list" ? "flex flex-1" : "hidden"
+        }`}
+      >
+        <BrandSurface
+          tone="sidebar"
+          className="h-full w-full border-b border-border lg:border-r lg:border-b-0"
+        >
         <header className="flex shrink-0 flex-col gap-4 px-4 pt-6 pb-4 sm:px-5">
           <div>
             <p className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -888,7 +936,7 @@ export function PlacesPageClient({
               value={query}
               onChange={(e) => onSearchChange(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Name, address, or /shop… /pinned /contact"
+              placeholder={t("searchWithSlash")}
               role="combobox"
               aria-expanded={paletteOpen || showResultsPanel}
               aria-controls={paletteOpen ? categoryListboxId : listboxId}
@@ -907,7 +955,7 @@ export function PlacesPageClient({
                 type="button"
                 onClick={clearSelection}
                 aria-label="Clear search"
-                className="absolute end-2 top-1/2 inline-flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="absolute end-2 top-1/2 inline-flex size-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
                 <X className="size-4" aria-hidden />
               </button>
@@ -963,7 +1011,7 @@ export function PlacesPageClient({
                         ? "Clear pinned filter"
                         : `Clear ${category} category`
                   }
-                  className="inline-flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                  className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                 >
                   <X className="size-3.5" aria-hidden />
                 </button>
@@ -1210,11 +1258,14 @@ export function PlacesPageClient({
             </div>
           )}
         </div>
-      </aside>
+      </BrandSurface>
+      </div>
 
       <section
         ref={mapSectionRef}
-        className="relative z-0 isolate min-h-[45vh] flex-1 lg:h-full lg:min-h-0"
+        className={`relative z-0 isolate min-h-0 flex-1 lg:flex lg:h-full ${
+          mobilePane === "map" ? "flex" : "hidden lg:flex"
+        }`}
         aria-label="Map"
       >
         <PlacesMap
@@ -1231,7 +1282,7 @@ export function PlacesPageClient({
         />
 
         {(selected || detailsBusy || detailsError) && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1100] flex justify-center p-3 pb-[3.25rem] sm:p-4 sm:pb-16">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1100] flex justify-center p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-4 sm:pb-16">
             <div className="pointer-events-auto w-full max-w-md drop-shadow-xl">
               {detailsBusy && !selected && (
                 <div

@@ -577,6 +577,7 @@ describe("priority helpers", () => {
 import { parseRoute } from "../parse/route";
 import { parseApprove } from "../parse/approve";
 import { parseWorkout } from "../parse/workout";
+import { formatAmount } from "../parse/common";
 import { emiAmounts, parseEmi } from "../parse/emi";
 import { parseRecipe } from "../parse/recipe";
 
@@ -629,6 +630,7 @@ describe("emi", () => {
     expect(d.principal).toBe(500_000);
     expect(d.annualRate).toBe(9);
     expect(d.tenureMonths).toBe(60);
+    expect(d.currency).toBe("₫");
   });
   test("months and dollars", () => {
     const d = parseEmi("loan $50000 at 8.5% for 36 months");
@@ -637,11 +639,17 @@ describe("emi", () => {
     expect(d.tenureMonths).toBe(36);
     expect(d.currency).toBe("$");
   });
+  test("vnd keyword", () => {
+    expect(parseEmi("emi 200000000 vnd at 8% for 5 years").currency).toBe("₫");
+  });
   test("emiAmounts known value", () => {
     const { monthly } = emiAmounts({ principal: 500_000, annualRate: 9, tenureMonths: 60 });
     expect(monthly).not.toBeNull();
     expect(monthly!).toBeGreaterThan(10_000);
     expect(monthly!).toBeLessThan(11_000);
+  });
+  test("formatAmount VND", () => {
+    expect(formatAmount(1_500_000.4, "₫")).toBe("₫" + (1_500_000).toLocaleString("vi-VN", { maximumFractionDigits: 0 }));
   });
 });
 

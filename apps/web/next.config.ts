@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 import { existsSync, readFileSync } from "fs";
 import path from "path";
+import createNextIntlPlugin from "next-intl/plugin";
+
+/** Relative path required for Turbopack (`next-intl/config` alias). */
+const NEXT_INTL_REQUEST = "./src/i18n/request.ts";
+
+const withNextIntl = createNextIntlPlugin(NEXT_INTL_REQUEST);
 
 /**
  * Next only auto-loads `apps/web/.env*`. Many editors also keep secrets in the
@@ -25,8 +31,43 @@ function applyRootEnvFallback() {
 
 applyRootEnvFallback();
 
+const neo4jArcCommon = path.join(__dirname, "vendor/neo4j-arc/common");
+const neo4jArcViz = path.join(__dirname, "vendor/neo4j-arc/graph-visualization");
+const nextIntlRequestAbs = path.join(__dirname, "src/i18n/request.ts");
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@shapeshift/core", "@shapeshift/react"],
+  compiler: {
+    // Vendored neo4j-arc GraphVisualizer uses styled-components v5.
+    styledComponents: true,
+  },
+  outputFileTracingIncludes: {
+    "/*": ["./vendor/neo4j-arc/**/*"],
+  },
+  async redirects() {
+    return [
+      { source: "/demo", destination: "/gadgets", permanent: true },
+      { source: "/vi/demo", destination: "/vi/gadgets", permanent: true },
+    ];
+  },
+  turbopack: {
+    resolveAlias: {
+      // Belt-and-suspenders: plugin also sets this; explicit so Turbopack never
+      // resolves the throw-stub at `next-intl/config`.
+      "next-intl/config": NEXT_INTL_REQUEST,
+      "neo4j-arc/common": "./vendor/neo4j-arc/common",
+      "neo4j-arc/graph-visualization": "./vendor/neo4j-arc/graph-visualization",
+    },
+  },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "next-intl/config": nextIntlRequestAbs,
+      "neo4j-arc/common": neo4jArcCommon,
+      "neo4j-arc/graph-visualization": neo4jArcViz,
+    };
+    return config;
+  },
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

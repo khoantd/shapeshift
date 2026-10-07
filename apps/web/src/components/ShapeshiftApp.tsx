@@ -17,12 +17,18 @@ function withIntentRecording(classify: ClassifyFn): ClassifyFn {
   };
 }
 
-export function ShapeshiftApp() {
+export function ShapeshiftApp({ showGadgetShelf = false }: { showGadgetShelf?: boolean } = {}) {
   const classify = useMemo(() => {
     const base: ClassifyFn = useMock
       ? mockClassifyAsync
       : createFetchClassify("/api/intent");
     return withIntentRecording(base);
   }, []);
-  return <Shapeshift classify={classify} />;
+  return (
+    <Shapeshift
+      classify={classify}
+      brandSrc="/brand/lockup.png"
+      showGadgetShelf={showGadgetShelf}
+    />
+  );
 }

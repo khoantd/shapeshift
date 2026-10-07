@@ -1,6 +1,10 @@
 import "server-only";
 
 import { parseCaptionBody } from "./captionFormat";
+import {
+  DEFAULT_TRANSCRIPT_PREFER_LANGS,
+  pickPreferredCaptionTrack,
+} from "./captionLanguage";
 
 type CaptionTrack = {
   baseUrl: string;
@@ -30,18 +34,6 @@ const INNERTUBE_CLIENTS = [
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   },
 ] as const;
-
-function pickTrack(tracks: CaptionTrack[], preferLangs: string[]): CaptionTrack | null {
-  if (tracks.length === 0) return null;
-  for (const lang of preferLangs) {
-    const hit = tracks.find((t) =>
-      t.languageCode.toLowerCase().startsWith(lang.toLowerCase()),
-    );
-    if (hit) return hit;
-  }
-  const manual = tracks.find((t) => (t.kind ?? "").toLowerCase() !== "asr");
-  return manual ?? tracks[0] ?? null;
-}
 
 function tracksFromPlayerJson(data: unknown): CaptionTrack[] {
   if (!data || typeof data !== "object") return [];
@@ -152,14 +144,14 @@ export async function fetchTranscriptViaInnerTube(
 ): Promise<InnerTubeTranscriptOk | null> {
   const preferLangs = opts?.preferLangs?.length
     ? opts.preferLangs
-    : ["en", "vi", "en-US", "en-GB"];
+    : [...DEFAULT_TRANSCRIPT_PREFER_LANGS];
 
   for (const client of INNERTUBE_CLIENTS) {
     const data = await playerResponse(videoId, client, opts?.signal);
     const tracks = tracksFromPlayerJson(data);
     if (tracks.length === 0) continue;
 
-    const track = pickTrack(tracks, preferLangs);
+    const track = pickPreferredCaptionTrack(tracks, preferLangs);
     if (!track) continue;
 
     const body = await downloadCaptions(track, client.userAgent, opts?.signal);

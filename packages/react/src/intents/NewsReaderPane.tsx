@@ -1,10 +1,11 @@
 "use client";
 
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
   LoaderCircle,
   Maximize2,
+  Network,
   Newspaper,
   Pin,
   Sparkles,
@@ -29,6 +30,8 @@ export type NewsBriefView = {
   tone: "neutral" | "caution" | "opportunity";
   line: string;
   source?: "jev" | "mock";
+  worthDeepDive?: boolean;
+  worthGraph?: boolean;
 };
 
 export type NewsDeepDiveLanguage = "vi" | "en";
@@ -45,6 +48,8 @@ export type NewsDeepDiveView = {
   sources: NewsDeepDiveSource[];
   language?: NewsDeepDiveLanguage;
 };
+
+export type NewsReaderTab = "read" | "graph";
 
 function relativeWhen(iso: string): string | null {
   if (!iso) return null;
@@ -399,6 +404,9 @@ export function NewsReaderPane({
   onDeepDiveLanguageChange,
   onGenerateDeepDive,
   onRegenerateDeepDive,
+  readerTab = "read",
+  onReaderTabChange,
+  graphPanel,
 }: {
   item: NewsFeedItem | null;
   onClose: () => void;
@@ -421,11 +429,17 @@ export function NewsReaderPane({
   onGenerateDeepDive?: () => void;
   /** When a deep dive already exists, optional regenerate handler */
   onRegenerateDeepDive?: () => void;
+  /** Active reader tab when graphPanel is provided. */
+  readerTab?: NewsReaderTab;
+  onReaderTabChange?: (tab: NewsReaderTab) => void;
+  /** Optional knowledge-graph panel (apps/web injects Arc canvas). */
+  graphPanel?: ReactNode;
 }) {
   const reduce = useReducedMotion();
   const canPin = typeof onTogglePin === "function";
   const canToggleRead = typeof onToggleRead === "function";
   const href = item?.canonicalUrl?.trim() || null;
+  const showGraphTab = graphPanel != null;
 
   useEffect(() => {
     if (!item) return;
@@ -455,78 +469,114 @@ export function NewsReaderPane({
           }
           transition={reduce ? tween.fade : spring.settle}
         >
-          <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-2 border-b bg-background/95 px-4 py-3 backdrop-blur-sm">
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex size-9 cursor-pointer items-center justify-center rounded-md border bg-background text-muted-foreground transition-[color,background-color,scale] duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.96]"
-              aria-label="Close reader"
-            >
-              <X className="size-4" aria-hidden />
-            </button>
-            <div className="flex items-center gap-2">
-              {canToggleRead ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={readBusy}
-                  aria-pressed={item.isRead}
-                  onClick={() => onToggleRead(item)}
-                >
-                  {item.isRead ? "Mark unread" : "Mark read"}
-                </Button>
-              ) : null}
-              {canPin ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={pinBusy}
-                  aria-pressed={item.isPinned}
-                  onClick={() => onTogglePin(item)}
-                >
-                  <Pin className={`size-3.5 ${item.isPinned ? "fill-current" : ""}`} aria-hidden />
-                  {item.isPinned ? "Unpin" : "Pin"}
-                </Button>
-              ) : null}
-              {href ? (
-                <Button asChild size="sm" variant="outline" className="gap-1.5">
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Open original in new tab"
+          <header className="sticky top-0 z-10 flex shrink-0 flex-col gap-2 border-b bg-background/95 px-4 py-3 backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex size-9 cursor-pointer items-center justify-center rounded-md border bg-background text-muted-foreground transition-[color,background-color,scale] duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.96]"
+                aria-label="Close reader"
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+              <div className="flex items-center gap-2">
+                {canToggleRead ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={readBusy}
+                    aria-pressed={item.isRead}
+                    onClick={() => onToggleRead(item)}
                   >
-                    <Maximize2 className="size-3.5" aria-hidden />
-                    <span className="sr-only sm:not-sr-only">Open</span>
-                  </a>
-                </Button>
-              ) : null}
+                    {item.isRead ? "Mark unread" : "Mark read"}
+                  </Button>
+                ) : null}
+                {canPin ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={pinBusy}
+                    aria-pressed={item.isPinned}
+                    onClick={() => onTogglePin(item)}
+                  >
+                    <Pin className={`size-3.5 ${item.isPinned ? "fill-current" : ""}`} aria-hidden />
+                    {item.isPinned ? "Unpin" : "Pin"}
+                  </Button>
+                ) : null}
+                {href ? (
+                  <Button asChild size="sm" variant="outline" className="gap-1.5">
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open original in new tab"
+                    >
+                      <Maximize2 className="size-3.5" aria-hidden />
+                      <span className="sr-only sm:not-sr-only">Open</span>
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
             </div>
+            {showGraphTab && onReaderTabChange ? (
+              <ToggleGroup
+                type="single"
+                value={readerTab}
+                onValueChange={(value) => {
+                  if (value === "read" || value === "graph") onReaderTabChange(value);
+                }}
+                size="sm"
+                variant="outline"
+                spacing={0}
+                aria-label="Reader section"
+                className="h-8 w-fit"
+              >
+                <ToggleGroupItem
+                  value="read"
+                  className="h-8 cursor-pointer px-3 text-[12px] font-medium"
+                >
+                  Read
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="graph"
+                  className="h-8 cursor-pointer gap-1.5 px-3 text-[12px] font-medium"
+                >
+                  <Network className="size-3.5" aria-hidden />
+                  Graph
+                </ToggleGroupItem>
+              </ToggleGroup>
+            ) : null}
           </header>
 
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-            <AnimatePresence mode="wait" initial={false}>
-              <ReaderBody
-                key={item.id}
-                item={item}
-                highlightQuery={highlightQuery}
-                brief={brief}
-                briefLoading={briefLoading}
-                briefError={briefError}
-                deepDive={deepDive}
-                deepDiveLoading={deepDiveLoading}
-                deepDiveError={deepDiveError}
-                deepDiveLanguage={deepDiveLanguage}
-                onDeepDiveLanguageChange={onDeepDiveLanguageChange}
-                onGenerateDeepDive={onGenerateDeepDive}
-                onRegenerateDeepDive={onRegenerateDeepDive}
-                reduce={reduce}
-              />
-            </AnimatePresence>
+            {showGraphTab && readerTab === "graph" ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-3 sm:px-4">
+                {graphPanel}
+              </div>
+            ) : (
+              <AnimatePresence mode="wait" initial={false}>
+                <ReaderBody
+                  key={item.id}
+                  item={item}
+                  highlightQuery={highlightQuery}
+                  brief={brief}
+                  briefLoading={briefLoading}
+                  briefError={briefError}
+                  deepDive={deepDive}
+                  deepDiveLoading={deepDiveLoading}
+                  deepDiveError={deepDiveError}
+                  deepDiveLanguage={deepDiveLanguage}
+                  onDeepDiveLanguageChange={onDeepDiveLanguageChange}
+                  onGenerateDeepDive={onGenerateDeepDive}
+                  onRegenerateDeepDive={onRegenerateDeepDive}
+                  reduce={reduce}
+                />
+              </AnimatePresence>
+            )}
           </div>
         </motion.aside>
       ) : null}

@@ -2,6 +2,11 @@
  * Pure caption formatting helpers (no server-only) — safe for unit tests + client-free server use.
  */
 
+import {
+  DEFAULT_TRANSCRIPT_PREFER_LANGS,
+  pickPreferredCaptionTrack,
+} from "./captionLanguage";
+
 export function formatCaptionTimestamp(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
   const m = Math.floor(s / 60);
@@ -76,22 +81,16 @@ export type ApiCaptionTrack = {
 /** Prefer preferred langs, then manual (non-ASR) tracks. */
 export function pickApiCaptionTrack(
   tracks: ApiCaptionTrack[],
-  preferLangs: string[] = ["en", "vi", "en-US", "en-GB"],
+  preferLangs: string[] = [...DEFAULT_TRANSCRIPT_PREFER_LANGS],
 ): ApiCaptionTrack | null {
-  if (tracks.length === 0) return null;
-
-  const scored = [...tracks];
-  for (const lang of preferLangs) {
-    const langHits = scored.filter((t) =>
-      t.language.toLowerCase().startsWith(lang.toLowerCase()),
-    );
-    if (langHits.length === 0) continue;
-    const manual = langHits.find((t) => (t.trackKind ?? "").toUpperCase() !== "ASR");
-    return manual ?? langHits[0] ?? null;
-  }
-
-  const manual = scored.find((t) => (t.trackKind ?? "").toUpperCase() !== "ASR");
-  return manual ?? scored[0] ?? null;
+  const mapped = tracks.map((t) => ({
+    languageCode: t.language,
+    kind: t.trackKind,
+    id: t.id,
+  }));
+  const picked = pickPreferredCaptionTrack(mapped, preferLangs, { allowAny: true });
+  if (!picked) return null;
+  return tracks.find((t) => t.id === picked.id) ?? null;
 }
 
 function decodeXmlEntities(s: string): string {

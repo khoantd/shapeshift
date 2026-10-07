@@ -100,11 +100,91 @@ const schema = defineSchema({
     videoId: v.string(),
     videoTitle: v.string(),
     channelTitle: v.optional(v.string()),
+    /** Pack content type / topic kind (tutorial, lecture, talk, …). Optional on older rows. */
+    contentType: v.optional(v.string()),
     markdown: v.string(),
     /** Source transcript used to generate the pack (optional on older rows). */
     transcript: v.optional(v.string()),
+    /**
+     * Snapshot of the knowledge graph (nodes + links) for instant reload.
+     * Optional on older rows — Graph tab rebuilds from markdown when missing.
+     */
+    graphPayload: v.optional(
+      v.object({
+        nodes: v.array(v.any()),
+        links: v.array(v.any()),
+      }),
+    ),
     createdAt: v.number(),
   }).index("by_googleSub_createdAt", ["googleSub", "createdAt"]),
+
+  /**
+   * Transcript summaries (VN/EN) for signed-in users on /youtube.
+   * One row per user + video; language fields are patched independently.
+   */
+  youtubeTranscriptSummaries: defineTable({
+    googleSub: v.string(),
+    email: v.optional(v.string()),
+    videoId: v.string(),
+    videoTitle: v.string(),
+    channelTitle: v.optional(v.string()),
+    summaryVi: v.optional(v.string()),
+    summaryEn: v.optional(v.string()),
+    /** Transcript used for the latest summary write (optional). */
+    transcript: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_googleSub_videoId", ["googleSub", "videoId"]),
+
+  /** Per-article knowledge graph snapshots for signed-in Google users on /news. */
+  newsKnowledgeArticles: defineTable({
+    googleSub: v.string(),
+    email: v.optional(v.string()),
+    storyId: v.string(),
+    title: v.string(),
+    canonicalUrl: v.string(),
+    deepDiveText: v.optional(v.string()),
+    graphPayload: v.object({
+      nodes: v.array(v.any()),
+      links: v.array(v.any()),
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_googleSub_updatedAt", ["googleSub", "updatedAt"])
+    .index("by_googleSub_storyId", ["googleSub", "storyId"]),
+
+  /** User-created cross-entity links in the personal news knowledge graph. */
+  newsKnowledgeLinks: defineTable({
+    googleSub: v.string(),
+    sourceNodeKey: v.string(),
+    targetNodeKey: v.string(),
+    type: v.union(
+      v.literal("RELATED_TO"),
+      v.literal("SUPPORTS"),
+      v.literal("CONTRASTS_WITH"),
+    ),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_googleSub_createdAt", ["googleSub", "createdAt"])
+    .index("by_googleSub_endpoints", [
+      "googleSub",
+      "sourceNodeKey",
+      "targetNodeKey",
+      "type",
+    ]),
+
+  /**
+   * Favorite language/topic chips for /github monitor (one row per Google user).
+   * Topics are catalog ids (typescript, ai, rust, …).
+   */
+  githubFavorites: defineTable({
+    googleSub: v.string(),
+    email: v.optional(v.string()),
+    topics: v.array(v.string()),
+    updatedAt: v.number(),
+  }).index("by_googleSub", ["googleSub"]),
 });
 
 export default schema;

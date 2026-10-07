@@ -54,3 +54,9 @@ export function looksLikeYouTubeUrl(input: string): boolean {
 export function youtubeWatchUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId.trim())}`;
 }
+
+/** Public YouTube thumbnail URL (hqdefault) for a video id — no API call. */
+export function youtubeThumbnailUrl(videoId: string): string {
+  const id = videoId.trim();
+  return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
+}

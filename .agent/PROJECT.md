@@ -25,14 +25,14 @@
 |------|---------|
 | `apps/web/` | Next.js demo host (routes, SiteChrome, thin `/api/intent`) |
 | `packages/core/` | decide, signals, parse, jev types/mock, `./server` handler |
-| `packages/react/` | Shapeshift shell, intent cards, hooks, shadcn ui, styles.css |
+| `packages/react/` | Meanbox shell (`<Shapeshift />` API), intent cards, hooks, shadcn ui, styles.css |
 | `docs/` | Demo media + architecture diagrams |
 | `tasks/` | Sprint checklist |
 
 ## Entry points
 
 - `apps/web/src/app/page.tsx` — waitlist landing (`WaitlistLanding` + Convex)
-- `apps/web/src/app/demo/page.tsx` — mounts `ShapeshiftApp` + `SiteChrome`
+- `apps/web/src/app/gadgets/page.tsx` — mounts `ShapeshiftApp` (gadget shelf) + `SiteChrome`
 - `apps/web/src/app/news/page.tsx` — CXO feed briefing (Inspired Canvas)
 - `packages/react/src/shapeshift/Shapeshift.tsx` — morphing input shell
 - `apps/web/src/app/api/intent/route.ts` — `createIntentHandler()`

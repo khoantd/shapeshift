@@ -1,8 +1,19 @@
 import { createClient } from "@supabase/supabase-js";
 import { getInspiredCanvasSupabaseEnv } from "./env";
+import { jwtSub } from "./jwt";
+import {
+  pickEnabledRefreshTargets,
+  refreshSourcesSequentially,
+  type CxoFeedFetchMode,
+  type FetchedFeedItem,
+  type RefreshableSource,
+  type SourceRefreshResult,
+} from "./refreshFeed";
 
 const DEFAULT_BASE_URL = "https://inspired-canvas.vercel.app";
 const REQUEST_TIMEOUT_MS = 25_000;
+/** RSS/scrape pull can be slow for multi-source refresh. */
+const FEED_FETCH_TIMEOUT_MS = 60_000;
 const ITEMS_TABLE = "ba_cxo_feed_items";
 const SOURCES_TABLE = "ba_cxo_feed_sources";
 
@@ -21,6 +32,10 @@ export type CxoFeedBrief = {
   model?: string | null;
   query?: string | null;
   generatedAt?: string | null;
+  worthDeepDive?: boolean;
+  worthGraph?: boolean;
+  /** Output language used when composing the brief line (`vi` | `en`). */
+  language?: "vi" | "en" | null;
 };
 
 export type CxoFeedDeepDive = {
@@ -53,7 +68,13 @@ export type CxoFeedSource = {
   id: string;
   displayName: string;
   enabled: boolean;
+  /** Present when listing via Supabase — needed to pull new articles. */
+  siteUrl?: string;
+  feedUrl?: string | null;
+  fetchMode?: CxoFeedFetchMode;
 };
+
+export type { CxoFeedFetchMode, FetchedFeedItem, SourceRefreshResult };
 
 export class InspiredCanvasClientError extends Error {
   constructor(
@@ -98,6 +119,9 @@ function parseBriefPayload(raw: unknown): CxoFeedBrief | null {
         : typeof row.generated_at === "string"
           ? row.generated_at
           : null,
+    ...(typeof row.worthDeepDive === "boolean" ? { worthDeepDive: row.worthDeepDive } : {}),
+    ...(typeof row.worthGraph === "boolean" ? { worthGraph: row.worthGraph } : {}),
+    ...(row.language === "vi" || row.language === "en" ? { language: row.language } : {}),
   };
 }
 
@@ -174,9 +198,13 @@ function normalizeFeedItem(raw: unknown): CxoFeedItem | null {
   };
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -207,6 +235,11 @@ function createIcSupabase(accessToken: string) {
   });
 }
 
+function normalizeFetchMode(raw: unknown): CxoFeedFetchMode {
+  if (raw === "scrape" || raw === "failed" || raw === "rss") return raw;
+  return "rss";
+}
+
 function normalizeFeedSource(raw: unknown): CxoFeedSource | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
@@ -215,10 +248,65 @@ function normalizeFeedSource(raw: unknown): CxoFeedSource | null {
   const displayName =
     coerceText(row.display_name) || coerceText(row.displayName) || coerceText(row.name);
   if (!displayName) return null;
+  const siteUrl = coerceText(row.site_url) || coerceText(row.siteUrl) || undefined;
+  const feedRaw = row.feed_url ?? row.feedUrl;
+  const feedUrl =
+    feedRaw == null
+      ? undefined
+      : typeof feedRaw === "string"
+        ? feedRaw.trim() || null
+        : null;
+  const hasFetchMode = "fetch_mode" in row || "fetchMode" in row;
   return {
     id,
     displayName,
     enabled: row.enabled !== false,
+    ...(siteUrl ? { siteUrl } : {}),
+    ...(feedUrl !== undefined ? { feedUrl } : {}),
+    ...(hasFetchMode ? { fetchMode: normalizeFetchMode(row.fetch_mode ?? row.fetchMode) } : {}),
+  };
+}
+
+function toRefreshableSource(source: CxoFeedSource): RefreshableSource | null {
+  const siteUrl = (source.siteUrl ?? "").trim();
+  if (!siteUrl) return null;
+  return {
+    id: source.id,
+    siteUrl,
+    feedUrl: source.feedUrl ?? null,
+    fetchMode: source.fetchMode ?? "rss",
+    enabled: source.enabled,
+  };
+}
+
+function normalizeFetchedItem(raw: unknown): FetchedFeedItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const title = coerceText(row.title);
+  const canonicalUrl = coerceText(row.canonicalUrl) || coerceText(row.canonical_url);
+  const contentHash = coerceText(row.contentHash) || coerceText(row.content_hash);
+  if (!title || !canonicalUrl || !contentHash) return null;
+  const ingest =
+    row.ingestMethod === "scrape" || row.ingest_method === "scrape" ? "scrape" : "rss";
+  const publishedAtIso =
+    coerceText(row.publishedAtIso) ||
+    coerceText(row.published_at) ||
+    coerceText(row.publishedAt) ||
+    new Date().toISOString();
+  const thumb =
+    typeof row.thumbnailUrl === "string"
+      ? row.thumbnailUrl
+      : typeof row.thumbnail_url === "string"
+        ? row.thumbnail_url
+        : null;
+  return {
+    title,
+    excerpt: coerceText(row.excerpt),
+    canonicalUrl,
+    publishedAtIso,
+    contentHash,
+    ingestMethod: ingest,
+    thumbnailUrl: thumb,
   };
 }
 
@@ -237,7 +325,7 @@ export async function listCxoFeedSources(params: {
 
   const { data, error } = await supabase
     .from(SOURCES_TABLE)
-    .select("id, display_name, enabled")
+    .select("id, display_name, enabled, site_url, feed_url, fetch_mode")
     .order("display_name", { ascending: true });
 
   if (error) {
@@ -666,6 +754,15 @@ export async function setCxoFeedItemBrief(params: {
     model: params.brief.model ?? null,
     query: params.brief.query ?? "",
     generatedAt: params.brief.generatedAt ?? new Date().toISOString(),
+    ...(typeof params.brief.worthDeepDive === "boolean"
+      ? { worthDeepDive: params.brief.worthDeepDive }
+      : {}),
+    ...(typeof params.brief.worthGraph === "boolean"
+      ? { worthGraph: params.brief.worthGraph }
+      : {}),
+    ...(params.brief.language === "vi" || params.brief.language === "en"
+      ? { language: params.brief.language }
+      : {}),
   };
 
   if (!payload.line) {
@@ -698,4 +795,199 @@ export async function setCxoFeedItemBrief(params: {
   }
 
   return parseBriefPayload((data as { brief?: unknown }).brief) ?? payload;
+}
+
+/** Call Inspired Canvas `/api/cxo-feed-fetch` to pull articles for one source. */
+export async function fetchCxoFeedSourceArticles(params: {
+  baseUrl?: string;
+  siteUrl: string;
+  feedUrl?: string | null;
+  fetchMode: CxoFeedFetchMode;
+}): Promise<
+  | { ok: true; items: FetchedFeedItem[]; fetchMode: CxoFeedFetchMode }
+  | { ok: false; error: string; fetchMode: CxoFeedFetchMode }
+> {
+  const base = (params.baseUrl ?? getInspiredCanvasBaseUrl()).replace(/\/+$/, "");
+  const url = `${base}/api/cxo-feed-fetch`;
+  try {
+    const res = await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          siteUrl: params.siteUrl,
+          feedUrl: params.feedUrl ?? null,
+          fetchMode: params.fetchMode === "failed" ? "rss" : params.fetchMode,
+        }),
+      },
+      FEED_FETCH_TIMEOUT_MS,
+    );
+    const body = await parseJson(res);
+    if (!res.ok || body.success !== true) {
+      const message =
+        (typeof body.error === "string" && body.error.trim()) ||
+        `Inspired Canvas feed fetch HTTP ${res.status}`;
+      return {
+        ok: false,
+        error: message,
+        fetchMode:
+          body.fetchMode != null ? normalizeFetchMode(body.fetchMode) : "failed",
+      };
+    }
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    const items = rawItems
+      .map((i) => normalizeFetchedItem(i))
+      .filter((i): i is FetchedFeedItem => i !== null);
+    return {
+      ok: true,
+      items,
+      fetchMode: normalizeFetchMode(body.fetchMode),
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Inspired Canvas feed fetch failed";
+    return { ok: false, error: message, fetchMode: "failed" };
+  }
+}
+
+/** Upsert pulled articles into `ba_cxo_feed_items` (IC parity). */
+export async function upsertCxoFeedItems(params: {
+  accessToken: string;
+  sourceId: string;
+  items: FetchedFeedItem[];
+}): Promise<number> {
+  const token = params.accessToken.trim();
+  const sourceId = params.sourceId.trim();
+  if (!token || !sourceId) {
+    throw new InspiredCanvasClientError("Missing access token or source id", 400);
+  }
+  if (params.items.length === 0) return 0;
+
+  const userId = jwtSub(token);
+  if (!userId) {
+    throw new InspiredCanvasClientError("Inspired Canvas token missing user id", 401);
+  }
+
+  const supabase = createIcSupabase(token);
+  if (!supabase) {
+    throw new InspiredCanvasClientError("Inspired Canvas Supabase is not configured", 503);
+  }
+
+  const rows = params.items.map((item) => ({
+    user_id: userId,
+    source_id: sourceId,
+    title: item.title,
+    excerpt: item.excerpt,
+    canonical_url: item.canonicalUrl,
+    published_at: item.publishedAtIso,
+    content_hash: item.contentHash,
+    ingest_method: item.ingestMethod,
+    thumbnail_url: item.thumbnailUrl?.trim() || null,
+  }));
+
+  const { error } = await supabase.from(ITEMS_TABLE).upsert(rows, {
+    onConflict: "source_id,content_hash",
+    ignoreDuplicates: true,
+  });
+
+  if (error) {
+    throw new InspiredCanvasClientError(error.message, 502);
+  }
+  return rows.length;
+}
+
+/** Update source fetch metadata after a pull. */
+export async function markCxoFeedSourceFetched(params: {
+  accessToken: string;
+  sourceId: string;
+  lastFetchedAt: string;
+  lastError: string | null;
+  fetchMode: CxoFeedFetchMode;
+}): Promise<void> {
+  const token = params.accessToken.trim();
+  const sourceId = params.sourceId.trim();
+  if (!token || !sourceId) {
+    throw new InspiredCanvasClientError("Missing access token or source id", 400);
+  }
+
+  const supabase = createIcSupabase(token);
+  if (!supabase) {
+    throw new InspiredCanvasClientError("Inspired Canvas Supabase is not configured", 503);
+  }
+
+  const { error } = await supabase
+    .from(SOURCES_TABLE)
+    .update({
+      last_fetched_at: params.lastFetchedAt,
+      last_error: params.lastError,
+      fetch_mode: params.fetchMode,
+    })
+    .eq("id", sourceId);
+
+  if (error) {
+    throw new InspiredCanvasClientError(error.message, 502);
+  }
+}
+
+/**
+ * Pull new articles from every enabled Inspired Canvas source, then return a summary.
+ * Mirrors IC workspace "Refresh" (fetch → upsert → mark fetched).
+ */
+export async function pullNewCxoFeedArticles(params: {
+  accessToken: string;
+  baseUrl?: string;
+  /** When set, only refresh sources matching this display name or id. */
+  sourceHint?: string;
+}): Promise<{
+  results: SourceRefreshResult[];
+  okCount: number;
+  failCount: number;
+  targetCount: number;
+}> {
+  const token = params.accessToken.trim();
+  if (!token) {
+    throw new InspiredCanvasClientError("Missing access token", 401);
+  }
+
+  const sources = await listCxoFeedSources({ accessToken: token });
+  let refreshable = pickEnabledRefreshTargets(
+    sources.map(toRefreshableSource).filter((s): s is RefreshableSource => s !== null),
+  );
+
+  const hint = (params.sourceHint ?? "").trim().toLowerCase();
+  if (hint) {
+    const matchIds = new Set(
+      sources
+        .filter(
+          (s) =>
+            s.id.toLowerCase() === hint || s.displayName.trim().toLowerCase() === hint,
+        )
+        .map((s) => s.id),
+    );
+    refreshable = refreshable.filter((s) => matchIds.has(s.id));
+  }
+
+  const summary = await refreshSourcesSequentially(refreshable, {
+    fetchSource: async (source) =>
+      fetchCxoFeedSourceArticles({
+        baseUrl: params.baseUrl,
+        siteUrl: source.siteUrl,
+        feedUrl: source.feedUrl,
+        fetchMode: source.fetchMode,
+      }),
+    upsertItems: async (sourceId, items) => {
+      await upsertCxoFeedItems({ accessToken: token, sourceId, items });
+    },
+    markFetched: async (sourceId, patch) => {
+      await markCxoFeedSourceFetched({
+        accessToken: token,
+        sourceId,
+        lastFetchedAt: patch.lastFetchedAt,
+        lastError: patch.lastError,
+        fetchMode: patch.fetchMode,
+      });
+    },
+  });
+
+  return { ...summary, targetCount: refreshable.length };
 }

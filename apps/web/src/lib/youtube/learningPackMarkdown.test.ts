@@ -83,4 +83,53 @@ More text.
     const blocks = parseLearningPackMarkdown("Above\n\n---\n\nBelow");
     expect(blocks.some((b) => b.type === "hr")).toBe(true);
   });
+
+  test("parses GFM pipe tables for Key arguments", () => {
+    const md = `## Key arguments
+
+| Argument | Support offered in the video | What the support does—and doesn't—show |
+|---|---|---|
+| Cross-level translation is central to architectural impact. | A personal project anecdote involving management, planning, and DevOps. | Illustrates the practice; does not demonstrate that every project needs the same approach. |
+| Preserving options can matter more than optimizing performance. | The reviewer's experience in transformation programs. | Supports the reviewer's preference in that context; no comparative data is given. |
+
+## Next section
+
+More text.
+`;
+    const blocks = parseLearningPackMarkdown(md);
+    const table = blocks.find((b) => b.type === "table");
+    expect(table?.type).toBe("table");
+    if (table?.type === "table") {
+      expect(table.headers).toHaveLength(3);
+      expect(table.headers[0]![0]).toMatchObject({ type: "text", text: "Argument" });
+      expect(table.rows).toHaveLength(2);
+      expect(table.rows[0]![0]![0]).toMatchObject({
+        type: "text",
+        text: "Cross-level translation is central to architectural impact.",
+      });
+      expect(table.rows[1]![2]![0]).toMatchObject({
+        type: "text",
+        text: "Supports the reviewer's preference in that context; no comparative data is given.",
+      });
+    }
+    // Must not collapse into a pipe-filled paragraph
+    const pipesAsParagraph = blocks.some(
+      (b) =>
+        b.type === "paragraph" &&
+        b.spans.some((s) => s.type === "text" && s.text.includes("|---|")),
+    );
+    expect(pipesAsParagraph).toBe(false);
+    expect(blocks.some((b) => b.type === "heading" && b.level === 2)).toBe(true);
+  });
+
+  test("flashcard lines with pipes are not tables", () => {
+    const md = `## Flashcards
+
+- Q: What is X? | A: Y
+- Q: Second? | A: Answer two
+`;
+    const blocks = parseLearningPackMarkdown(md);
+    expect(blocks.some((b) => b.type === "table")).toBe(false);
+    expect(blocks.some((b) => b.type === "flashcards")).toBe(true);
+  });
 });

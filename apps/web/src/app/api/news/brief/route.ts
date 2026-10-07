@@ -21,8 +21,11 @@ function normalizeQuery(q: string | undefined): string {
   return (q ?? "").trim().toLowerCase();
 }
 
-function briefMatchesQuery(stored: CxoFeedBrief, query: string): boolean {
-  return normalizeQuery(stored.query ?? undefined) === normalizeQuery(query);
+function briefMatchesQuery(stored: CxoFeedBrief, query: string, language: string): boolean {
+  const queryOk = normalizeQuery(stored.query ?? undefined) === normalizeQuery(query);
+  if (!queryOk) return false;
+  const storedLang = stored.language === "vi" || stored.language === "en" ? stored.language : "en";
+  return storedLang === language;
 }
 
 function toView(result: NewsBriefResult | CxoFeedBrief): {
@@ -32,6 +35,8 @@ function toView(result: NewsBriefResult | CxoFeedBrief): {
   line: string;
   source: "jev" | "mock";
   model?: string | null;
+  worthDeepDive?: boolean;
+  worthGraph?: boolean;
 } {
   return {
     urgency: result.urgency,
@@ -40,6 +45,12 @@ function toView(result: NewsBriefResult | CxoFeedBrief): {
     line: result.line,
     source: result.source === "jev" || result.source === "mock" ? result.source : "mock",
     model: "model" in result ? (result.model ?? null) : null,
+    ...("worthDeepDive" in result && typeof result.worthDeepDive === "boolean"
+      ? { worthDeepDive: result.worthDeepDive }
+      : {}),
+    ...("worthGraph" in result && typeof result.worthGraph === "boolean"
+      ? { worthGraph: result.worthGraph }
+      : {}),
   };
 }
 
@@ -62,6 +73,7 @@ export async function POST(request: Request) {
   const itemId = typeof body.id === "string" ? body.id.trim().slice(0, 128) : "";
   const force = body.force === true;
   const query = (input.query ?? "").trim();
+  const language = input.language === "vi" ? "vi" : "en";
 
   let accessToken: string | null = null;
   if (itemId) {
@@ -82,7 +94,7 @@ export async function POST(request: Request) {
     if (itemId && accessToken && !force) {
       try {
         const stored = await getCxoFeedItemBrief({ accessToken, id: itemId });
-        if (stored && briefMatchesQuery(stored, query)) {
+        if (stored && briefMatchesQuery(stored, query, language)) {
           const view = toView(stored);
           return Response.json({
             success: true,
@@ -139,7 +151,10 @@ export async function POST(request: Request) {
             source: result.source,
             model: result.model,
             query,
+            language,
             generatedAt: new Date().toISOString(),
+            worthDeepDive: result.worthDeepDive,
+            worthGraph: result.worthGraph,
           },
         });
         persisted = true;

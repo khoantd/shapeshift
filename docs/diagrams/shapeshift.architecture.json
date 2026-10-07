@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Shapeshift",
+    "title": "Meanbox",
     "output": "shapeshift.architecture.html",
     "quality_profile": "showcase",
     "locale": "en",
@@ -23,7 +23,7 @@
         "id": "waitlist",
         "label": "Waitlist landing",
         "focus": ["user", "web", "convex"],
-        "note": "Public / landing joins waitlist through Convex; demo lives at /demo."
+        "note": "Public / landing joins waitlist through Convex; gadgets live at /gadgets."
       }
     ]
   },
@@ -41,7 +41,7 @@
       "type": "frontend",
       "label": "apps/web",
       "sublabel": "Next.js 16",
-      "tag": "/ · /demo · /news",
+      "tag": "/ · /gadgets · /news",
       "pos": [200, 190],
       "size": [140, 70]
     },
@@ -139,7 +139,7 @@
       "id": "web-to-react",
       "from": "web",
       "to": "react-sdk",
-      "label": "Shapeshift shell",
+      "label": "Meanbox shell",
       "fromSide": "top",
       "toSide": "left"
     },

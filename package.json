@@ -6,7 +6,7 @@
     "prettier-plugin-tailwindcss": "^0.8.1",
     "typescript": "^5"
   },
-  "description": "Shapeshift monorepo — morphing input SDK and demo web app.",
+  "description": "Meanbox monorepo — morphing input SDK and demo web app.",
   "ignoreScripts": ["sharp", "unrs-resolver"],
   "license": "MIT",
   "packageManager": "bun@1.4.2",

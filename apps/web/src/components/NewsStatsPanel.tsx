@@ -211,10 +211,10 @@ export function NewsStatsPanel({
           <p className="rounded-lg border border-dashed px-3 py-4 text-[13px] leading-5 text-muted-foreground">
             No classify events yet. Try the{" "}
             <Link
-              href="/demo"
+              href="/gadgets"
               className="font-medium text-foreground underline underline-offset-2 transition-colors duration-150 hover:text-[var(--brand)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              demo
+              gadgets
             </Link>{" "}
             to populate rankings.
           </p>

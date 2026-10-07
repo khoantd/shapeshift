@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractYouTubeVideoId, looksLikeYouTubeUrl, youtubeWatchUrl } from "./url";
+import { extractYouTubeVideoId, looksLikeYouTubeUrl, youtubeThumbnailUrl, youtubeWatchUrl } from "./url";
 
 describe("extractYouTubeVideoId", () => {
   test("parses watch URLs", () => {
@@ -45,6 +45,14 @@ describe("youtubeWatchUrl", () => {
   test("builds canonical watch URL", () => {
     expect(youtubeWatchUrl("dQw4w9WgXcQ")).toBe(
       "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    );
+  });
+});
+
+describe("youtubeThumbnailUrl", () => {
+  test("builds hqdefault thumbnail URL", () => {
+    expect(youtubeThumbnailUrl("dQw4w9WgXcQ")).toBe(
+      "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
     );
   });
 });

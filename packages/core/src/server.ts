@@ -5,6 +5,8 @@ import {
   classifyWithJev,
   briefNewsStoryWithJev,
   classifyVideoWithJev,
+  suggestNewsLinkWithJev,
+  gateVideoStudyWithJev,
   warnMockOnce,
   looksLikeKey,
 } from "./jev/client";
@@ -15,6 +17,17 @@ import {
   videoClassifyRequestSchema,
   type VideoClassifyResult,
 } from "./jev/videoClassify";
+import {
+  mockSuggestNewsLink,
+  newsLinkSuggestRequestSchema,
+  type NewsLinkSuggestResult,
+} from "./jev/newsLinkSuggest";
+import {
+  mockVideoStudyGate,
+  videoStudyGateRequestSchema,
+  type VideoStudyGateRequest,
+  type VideoStudyGateResult,
+} from "./jev/videoStudyGate";
 import { type IntentResult, intentRequestSchema, noneResult } from "./jev/types";
 import { LRU, normalizeKey } from "./lru";
 
@@ -23,6 +36,8 @@ export {
   classifyWithJev,
   briefNewsStoryWithJev,
   classifyVideoWithJev,
+  suggestNewsLinkWithJev,
+  gateVideoStudyWithJev,
   classifierMode,
   warnMockOnce,
   looksLikeKey,
@@ -44,6 +59,26 @@ export {
   type VideoTopic,
   type VideoBriefTone,
 } from "./jev/videoClassify";
+export {
+  mockSuggestNewsLink,
+  newsLinkSuggestRequestSchema,
+  composeNewsLinkSuggestLine,
+  type NewsLinkSuggestResult,
+  type NewsLinkSuggestRequest,
+  type NewsLinkType,
+  NEWS_LINK_TYPES,
+} from "./jev/newsLinkSuggest";
+export {
+  mockVideoStudyGate,
+  videoStudyGateRequestSchema,
+  composeVideoStudyGateLine,
+  type VideoStudyGateResult,
+  type VideoStudyGateRequest,
+  type VideoStudyDepth,
+  type VideoStudyAudience,
+  VIDEO_STUDY_DEPTHS,
+  VIDEO_STUDY_AUDIENCES,
+} from "./jev/videoStudyGate";
 
 export type IntentHandlerOptions = {
   /** Force the offline keyword classifier (host reads NEXT_PUBLIC_USE_MOCK). */
@@ -206,6 +241,150 @@ export function createVideoClassifyHandler(opts: VideoClassifyHandlerOptions = {
       console.warn(`[jev-video] failed: ${err instanceof Error ? err.message : String(err)}`);
       const fallback = mockClassifyVideo(input);
       return Response.json({ success: true, ...fallback, model: "error-fallback" });
+    }
+  };
+}
+
+export type NewsLinkSuggestHandlerOptions = {
+  forceOffline?: boolean;
+};
+
+/** Next.js POST handler: suggest a knowledge-graph edge type between two news entities. */
+export function createNewsLinkSuggestHandler(opts: NewsLinkSuggestHandlerOptions = {}) {
+  const cache = new LRU<string, NewsLinkSuggestResult>(200);
+
+  return async function POST(request: Request) {
+    const body = newsLinkSuggestRequestSchema.safeParse(await request.json().catch(() => null));
+    if (!body.success) {
+      return Response.json(
+        {
+          success: false,
+          error: "Expected { sourceName, targetName, sourceContext?, targetContext? }",
+        },
+        { status: 400 },
+      );
+    }
+
+    const input = body.data;
+    if (!input.sourceName.trim() || !input.targetName.trim()) {
+      return Response.json(
+        { success: false, error: "sourceName and targetName required" },
+        { status: 400 },
+      );
+    }
+
+    const cacheKey = normalizeKey(
+      `${input.sourceName}\n${input.targetName}\n${(input.sourceContext ?? "").trim()}\n${(input.targetContext ?? "").trim()}`,
+    );
+    const hit = cache.get(cacheKey);
+    if (hit) {
+      return Response.json({ success: true, ...hit, latencyMs: 0, cached: true });
+    }
+
+    const { mode, reason } = opts.forceOffline
+      ? { mode: "offline" as const, reason: "forceOffline" }
+      : classifierMode();
+
+    if (mode === "offline") {
+      warnMockOnce(reason);
+      const result = mockSuggestNewsLink(input);
+      cache.set(cacheKey, result);
+      return Response.json({ success: true, ...result });
+    }
+
+    try {
+      const result = await suggestNewsLinkWithJev(input, request.signal);
+      console.info(
+        `[jev-news-link] ${result.model} ${result.latencyMs}ms ${result.linkType} c=${result.confidence.toFixed(2)}`,
+      );
+      cache.set(cacheKey, result);
+      return Response.json({ success: true, ...result });
+    } catch (err) {
+      if (err instanceof APIUserAbortError || request.signal.aborted) {
+        return new Response(null, { status: 499 });
+      }
+      console.warn(`[jev-news-link] failed: ${err instanceof Error ? err.message : String(err)}`);
+      const fallback = mockSuggestNewsLink(input);
+      return Response.json({ success: true, ...fallback, model: "error-fallback" });
+    }
+  };
+}
+
+export type VideoStudyGateHandlerOptions = {
+  forceOffline?: boolean;
+};
+
+/** Resolve study-gate (online Jev or offline mock) for use from other server routes. */
+export async function resolveVideoStudyGate(
+  input: VideoStudyGateRequest,
+  opts: { forceOffline?: boolean; signal?: AbortSignal } = {},
+): Promise<VideoStudyGateResult> {
+  const { mode, reason } = opts.forceOffline
+    ? { mode: "offline" as const, reason: "forceOffline" }
+    : classifierMode();
+
+  if (mode === "offline") {
+    warnMockOnce(reason);
+    return mockVideoStudyGate(input);
+  }
+
+  try {
+    return await gateVideoStudyWithJev(input, opts.signal);
+  } catch (err) {
+    if (err instanceof APIUserAbortError || opts.signal?.aborted) {
+      throw err;
+    }
+    console.warn(`[jev-study-gate] failed: ${err instanceof Error ? err.message : String(err)}`);
+    return { ...mockVideoStudyGate(input), model: "error-fallback" };
+  }
+}
+
+/** Next.js POST handler: study depth / audience gate for a YouTube video. */
+export function createVideoStudyGateHandler(opts: VideoStudyGateHandlerOptions = {}) {
+  const cache = new LRU<string, VideoStudyGateResult>(200);
+
+  return async function POST(request: Request) {
+    const body = videoStudyGateRequestSchema.safeParse(await request.json().catch(() => null));
+    if (!body.success) {
+      return Response.json(
+        {
+          success: false,
+          error: "Expected { title, description?, channelTitle?, topic?, transcriptHead? }",
+        },
+        { status: 400 },
+      );
+    }
+
+    const input = body.data;
+    if (!input.title.trim()) {
+      return Response.json({ success: false, error: "title required" }, { status: 400 });
+    }
+
+    const cacheKey = normalizeKey(
+      `${input.title}\n${(input.description ?? "").trim()}\n${(input.channelTitle ?? "").trim()}\n${(input.topic ?? "").trim()}\n${(input.transcriptHead ?? "").trim()}`,
+    );
+    const hit = cache.get(cacheKey);
+    if (hit) {
+      return Response.json({ success: true, ...hit, latencyMs: 0, cached: true });
+    }
+
+    try {
+      const result = await resolveVideoStudyGate(input, {
+        forceOffline: opts.forceOffline,
+        signal: request.signal,
+      });
+      if (result.source === "jev") {
+        console.info(
+          `[jev-study-gate] ${result.model} ${result.latencyMs}ms ${result.depth}/${result.audience} pack=${result.packSuitable}`,
+        );
+      }
+      cache.set(cacheKey, result);
+      return Response.json({ success: true, ...result });
+    } catch (err) {
+      if (err instanceof APIUserAbortError || request.signal.aborted) {
+        return new Response(null, { status: 499 });
+      }
+      throw err;
     }
   };
 }

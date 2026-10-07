@@ -2,6 +2,10 @@ import "server-only";
 
 import { YoutubeTranscript } from "youtube-transcript";
 import { mapLibrarySegmentsToText } from "./captionFormat";
+import {
+  DEFAULT_TRANSCRIPT_PREFER_LANGS,
+  isAcceptableTranscriptLanguage,
+} from "./captionLanguage";
 
 const ANDROID_UA =
   "com.google.android.youtube/20.10.38 (Linux; U; Android 14)";
@@ -27,12 +31,15 @@ export type LibraryTranscriptResult =
 /**
  * Public-video captions via `youtube-transcript` (same approach as litellm-aid-studio).
  * Does not use YouTube Data API — works for third-party videos when captions exist.
+ * Only returns preferred languages (no "any language" fallback — that often yields auto-translate).
  */
 export async function fetchTranscriptViaLibrary(
   videoId: string,
   opts?: { preferLangs?: string[] },
 ): Promise<LibraryTranscriptResult> {
-  const langs = opts?.preferLangs?.length ? opts.preferLangs : ["en", "vi"];
+  const langs = opts?.preferLangs?.length
+    ? opts.preferLangs
+    : [...DEFAULT_TRANSCRIPT_PREFER_LANGS];
   let lastFail: LibraryTranscriptResult | null = null;
 
   for (const lang of langs) {
@@ -52,11 +59,20 @@ export async function fetchTranscriptViaLibrary(
         lastFail = { ok: false, reason: "empty" };
         continue;
       }
+      if (
+        !isAcceptableTranscriptLanguage({
+          language: lang,
+          text,
+          preferLangs: langs,
+        })
+      ) {
+        lastFail = { ok: false, reason: "no_transcript" };
+        continue;
+      }
       return { ok: true, text, language: lang };
     } catch (err) {
       const mapped = mapLibraryError(err);
       if (!mapped.ok && mapped.reason === "no_transcript") {
-        // try next preferred language
         lastFail = mapped;
         continue;
       }
@@ -65,20 +81,7 @@ export async function fetchTranscriptViaLibrary(
     }
   }
 
-  // Last attempt: any available language (library default)
-  try {
-    const items = await YoutubeTranscript.fetchTranscript(videoId, { fetch: androidFetch });
-    if (!items?.length) {
-      return lastFail ?? { ok: false, reason: "empty" };
-    }
-    const text = mapLibrarySegmentsToText(
-      items.map((i) => ({ text: i.text, offset: i.offset })),
-    );
-    if (!text) return lastFail ?? { ok: false, reason: "empty" };
-    return { ok: true, text, language: items[0]?.lang };
-  } catch (err) {
-    return lastFail ?? mapLibraryError(err);
-  }
+  return lastFail ?? { ok: false, reason: "no_transcript" };
 }
 
 function mapLibraryError(err: unknown): LibraryTranscriptResult {

@@ -4,7 +4,7 @@ export { useDemoScript, DEMO_SCRIPT, type DemoApi } from "./hooks/useDemoScript"
 export { registry, CARD_INTENTS } from "./intents/registry";
 export { NewsFeedItemCard, type NewsFeedItem } from "./intents/NewsFeedItemCard";
 export { NewsDetailCard } from "./intents/NewsDetailCard";
-export { NewsReaderPane, type NewsBriefView, type NewsDeepDiveView, type NewsDeepDiveSource, type NewsDeepDiveLanguage } from "./intents/NewsReaderPane";
+export { NewsReaderPane, type NewsBriefView, type NewsDeepDiveView, type NewsDeepDiveSource, type NewsDeepDiveLanguage, type NewsReaderTab } from "./intents/NewsReaderPane";
 export { MarkdownBody } from "./intents/MarkdownBody";
 export { NewsSourcePalette, type NewsSourceOption } from "./shapeshift/NewsSourcePalette";
 export {

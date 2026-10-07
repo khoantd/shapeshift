@@ -11,6 +11,7 @@ export type MdBlock =
   | { type: "paragraph"; spans: InlineSpan[] }
   | { type: "list"; ordered: boolean; items: InlineSpan[][] }
   | { type: "flashcards"; cards: { q: InlineSpan[]; a: InlineSpan[] }[] }
+  | { type: "table"; headers: InlineSpan[][]; rows: InlineSpan[][][] }
   | { type: "hr" }
   | { type: "answerKey"; blocks: MdBlock[] };
 
@@ -19,6 +20,45 @@ const LIST_RE = /^\s*[-*]\s+(.+)$/;
 const ORDERED_RE = /^\s*\d+[.)]\s+(.+)$/;
 const HEADING_RE = /^(#{1,3})\s+(.+)$/;
 const HR_RE = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/;
+const TABLE_SEP_CELL_RE = /^\s*:?-{1,}:?\s*$/;
+
+/** Split a GFM table row into cell strings (outer pipes optional). */
+export function splitTableRow(line: string): string[] {
+  let t = line.trim();
+  if (t.startsWith("|")) t = t.slice(1);
+  if (t.endsWith("|")) t = t.slice(0, -1);
+  return t.split("|").map((c) => c.trim());
+}
+
+export function isTableSeparator(line: string): boolean {
+  const t = line.trim();
+  if (!t.includes("-")) return false;
+  const cells = splitTableRow(t);
+  return cells.length > 0 && cells.every((c) => TABLE_SEP_CELL_RE.test(c));
+}
+
+function isTableRowLine(line: string): boolean {
+  const t = line.trim();
+  if (!t.includes("|")) return false;
+  if (FLASHCARD_RE.test(line) || LIST_RE.test(line) || ORDERED_RE.test(line)) return false;
+  if (HEADING_RE.test(t) || HR_RE.test(t)) return false;
+  return splitTableRow(t).length >= 2;
+}
+
+function peekNextNonEmpty(lines: string[], from: number): string | null {
+  for (let j = from; j < lines.length; j++) {
+    const t = lines[j]!.trim();
+    if (t) return lines[j]!;
+  }
+  return null;
+}
+
+function isTableStart(lines: string[], index: number): boolean {
+  const cur = lines[index];
+  if (!cur || !isTableRowLine(cur)) return false;
+  const next = peekNextNonEmpty(lines, index + 1);
+  return next !== null && isTableSeparator(next);
+}
 
 /** Parse inline `**bold**`, `*italic*`, `` `code` `` into spans. */
 export function parseInline(text: string): InlineSpan[] {
@@ -136,13 +176,39 @@ export function parseLearningPackMarkdown(markdown: string): MdBlock[] {
       continue;
     }
 
+    // GFM pipe table: header row + separator + body rows
+    if (isTableStart(lines, i)) {
+      const headers = splitTableRow(lines[i]!).map((c) => parseInline(c));
+      i += 1;
+      // skip blank lines then separator
+      while (i < lines.length && !lines[i]!.trim()) i += 1;
+      if (i < lines.length && isTableSeparator(lines[i]!)) i += 1;
+      const rows: InlineSpan[][][] = [];
+      while (i < lines.length) {
+        const cur = lines[i]!;
+        if (!cur.trim()) break;
+        if (!isTableRowLine(cur) || isTableSeparator(cur)) break;
+        rows.push(splitTableRow(cur).map((c) => parseInline(c)));
+        i += 1;
+      }
+      raw.push({ type: "table", headers, rows });
+      continue;
+    }
+
     // Paragraph: consume consecutive non-blank, non-special lines
     const paraLines: string[] = [];
     while (i < lines.length) {
       const cur = lines[i]!;
       const t = cur.trim();
       if (!t) break;
-      if (HEADING_RE.test(t) || HR_RE.test(t) || FLASHCARD_RE.test(cur) || LIST_RE.test(cur) || ORDERED_RE.test(cur)) {
+      if (
+        HEADING_RE.test(t) ||
+        HR_RE.test(t) ||
+        FLASHCARD_RE.test(cur) ||
+        LIST_RE.test(cur) ||
+        ORDERED_RE.test(cur) ||
+        isTableStart(lines, i)
+      ) {
         break;
       }
       paraLines.push(t);

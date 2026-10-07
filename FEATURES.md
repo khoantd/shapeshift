@@ -1,4 +1,4 @@
-# Shapeshift — Features
+# Meanbox — Features
 
 An input that becomes what you mean. One text box morphs into the right UI as you type.
 
@@ -9,21 +9,22 @@ An input that becomes what you mean. One text box morphs into the right UI as yo
 | **Morphs as you type** | One text box becomes the right UI — events, checklists, places, news, splits, and thirty-plus more — without menus or mode switches. |
 | **Jev decides, code computes** | TypeSafe AI’s Jev classifies intent in parallel. Dates, amounts, places, and math stay in deterministic parsers. |
 | **Places with contacts** | Search venues on the map, open details, pin places for later (`/pinned`), and save people to Lead Flow — type `/contact` to revisit places you’ve already captured. |
-| **Works offline by default** | A built-in keyword classifier keeps the demo useful with no API key. Plug in Jev when you want the full model. |
+| **Works offline by default** | A built-in keyword classifier keeps gadgets useful with no API key. Plug in Jev when you want the full model. |
 
 ## App surfaces
 
 | Route | What it does |
 | --- | --- |
 | `/` | Waitlist landing (Convex signup) |
-| `/demo` | Live morphing input — press `/` for every card type |
+| `/gadgets` | Morphing gadget shelf — open a tool or type naturally; press `/` for every card type |
 | `/places` | Map search by query or `/category`, pin places (`/pinned`), place details, contacts → Lead Flow |
 | `/news` | CXO news briefing feed |
 | `/youtube` | Search YouTube or paste a link; Jev classifies content type; learning pack from transcript (Perplexity) |
+| `/github` | Trending repos + dual news (releases + topic headlines) personalized by favorite language/topic chips |
 
 ## Morphing intent cards
 
-Press `/` in the demo to browse all types. Each row is a card the input can become.
+Press `/` on `/gadgets` to browse all types. Each row is a card the input can become.
 
 ### Planning & lists
 
@@ -117,6 +118,17 @@ Press `/` in the demo to browse all types. Each row is a card the input can beco
 | Offline fallback | Keyword mock classifier when TypeSafe/Jev is unavailable |
 | Agent skill | `.cursor/skills/youtube-to-learning/` (mirrored to Claude/Kiro/Antigravity) |
 
+## GitHub (`/github`)
+
+| Feature | Description |
+| --- | --- |
+| Favorite topics | Language / interest chips (TypeScript, Rust, AI, …); localStorage + Convex when signed in with Google |
+| Trending | GitHub Search API for repos created in the last ~7 days, filtered by favorites |
+| Repo detail | Select a repo → about (description/stats) + README; optional AI summary of the README (Perplexity) |
+| Activity | Recent releases for trending / selected repos |
+| Headlines | SerpAPI Google News matched to favorite topics (`SERPAPI_API_KEY`) |
+| Auth | Soft Google sign-in (same OAuth as `/youtube`) to sync favorites — no GitHub OAuth |
+
 ## Platform
 
 | Feature | Description |
@@ -131,6 +143,6 @@ Press `/` in the demo to browse all types. Each row is a card the input can beco
 
 ## Related
 
-- Live demo: `/demo`
+- Gadgets: `/gadgets`
 - Landing features section: `apps/web/src/components/waitlist/WaitlistLanding.tsx`
 - Intent registry: `packages/react/src/intents/registry.ts`
