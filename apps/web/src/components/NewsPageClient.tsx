@@ -27,6 +27,9 @@ import {
 import { NewsStatsPanel } from "@/components/NewsStatsPanel";
 import { NewsKnowledgeGraphPanel } from "@/components/news/NewsKnowledgeGraphPanel";
 import { NewsCompareLinkPanel } from "@/components/news/NewsCompareLinkPanel";
+import { NewsExploreLinks } from "@/components/news/NewsExploreLinks";
+import { RelatedReposFromNews } from "@/components/news/RelatedReposFromNews";
+import { RelatedVideosFromNews } from "@/components/news/RelatedVideosFromNews";
 import type { GraphPayload } from "@/lib/neo4j/types";
 import {
   aggregateIntentStats,
@@ -207,6 +210,8 @@ type SyncUrlParams = {
   view?: NewsView;
   read?: NewsReadFilter;
   sort?: NewsSortOrder;
+  /** Selected story id for deep links; omit to leave unchanged, null to clear. */
+  story?: string | null;
 };
 
 function briefBadgeFor(brief: NewsBriefView | undefined, hasQuery: boolean): string | undefined {
@@ -252,6 +257,7 @@ export function NewsPageClient({
   const initialView = parseNewsView(searchParams.get("view"));
   const initialRead = parseReadFilter(searchParams.get("read"));
   const initialSort = parseSortOrder(searchParams.get("sort"));
+  const initialStory = (searchParams.get("story") ?? "").trim();
 
   const [query, setQuery] = useState(initialQ);
   const [criticalOnly, setCriticalOnly] = useState(initialCritical);
@@ -273,7 +279,10 @@ export function NewsPageClient({
   const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
   const [readerId, setReaderId] = useState<string | null>(null);
+  const readerIdRef = useRef(readerId);
+  readerIdRef.current = readerId;
   const [readerShellOpen, setReaderShellOpen] = useState(false);
+  const storyHydratedRef = useRef(false);
   const [pinningId, setPinningId] = useState<string | null>(null);
   const [readingId, setReadingId] = useState<string | null>(null);
   const [briefCache, setBriefCache] = useState<Record<string, NewsBriefView>>(() =>
@@ -560,6 +569,10 @@ export function NewsPageClient({
       const nextView = params.view ?? view;
       const nextRead = params.read ?? readFilter;
       const nextSort = params.sort ?? sortOrder;
+      const nextStory =
+        params.story === undefined
+          ? readerIdRef.current
+          : params.story;
       const search = new URLSearchParams();
       if (params.q.trim()) search.set("q", params.q.trim());
       if (params.critical) search.set("critical", "1");
@@ -567,6 +580,9 @@ export function NewsPageClient({
       if (nextView === "stats") search.set("view", "stats");
       if (nextRead !== "all") search.set("read", nextRead);
       if (nextSort !== "newest") search.set("sort", nextSort);
+      if (nextStory?.trim() && nextView === "feed") {
+        search.set("story", nextStory.trim().slice(0, 200));
+      }
       const qs = search.toString();
       startTransition(() => {
         router.replace(qs ? `/news?${qs}` : "/news", { scroll: false });
@@ -642,10 +658,30 @@ export function NewsPageClient({
         critical: criticalOnly,
         source: sourceHint,
         view: next,
+        story: next === "stats" || next === "knowledge" ? null : undefined,
       });
     },
     [clearSlashSession, criticalOnly, query, sourceHint, syncUrl],
   );
+
+  // One-shot deep link: /news?story=<id> opens the matching reader item.
+  useEffect(() => {
+    if (storyHydratedRef.current) return;
+    if (!initialStory) {
+      storyHydratedRef.current = true;
+      return;
+    }
+    if (initialView !== "feed") {
+      storyHydratedRef.current = true;
+      return;
+    }
+    const match = items.find((row) => row.id === initialStory);
+    if (!match) return;
+    storyHydratedRef.current = true;
+    setReaderShellOpen(true);
+    setReaderId(match.id);
+    setReaderTab("read");
+  }, [initialStory, initialView, items]);
 
   const scoreUnscored = useCallback(async () => {
     const ids = newsStats.unscoredIds.slice(0, SCORE_UNSCORED_LIMIT);
@@ -773,9 +809,6 @@ export function NewsPageClient({
     setPaletteOpen(false);
   };
 
-  const readerIdRef = useRef(readerId);
-  readerIdRef.current = readerId;
-
   const onSelectItem = useCallback(
     (item: NewsFeedItem) => {
       setReaderShellOpen(true);
@@ -788,8 +821,14 @@ export function NewsPageClient({
       if (!item.isRead) {
         void setItemRead(item, true);
       }
+      syncUrl({
+        q: query.startsWith("/") ? "" : query,
+        critical: criticalOnly,
+        source: sourceHint,
+        story: item.id,
+      });
     },
-    [setItemRead],
+    [setItemRead, syncUrl, query, criticalOnly, sourceHint],
   );
 
   const onSelectRankedStory = useCallback(
@@ -814,7 +853,13 @@ export function NewsPageClient({
     setReaderId(null);
     setBriefLoadingId(null);
     setDeepDiveLoadingId(null);
-  }, []);
+    syncUrl({
+      q: query.startsWith("/") ? "" : query,
+      critical: criticalOnly,
+      source: sourceHint,
+      story: null,
+    });
+  }, [syncUrl, query, criticalOnly, sourceHint]);
 
   const onReaderExitComplete = useCallback(() => {
     if (readerIdRef.current == null) setReaderShellOpen(false);
@@ -1453,6 +1498,24 @@ export function NewsPageClient({
                 }
               }}
             />
+          ) : null
+        }
+        relatedPanel={
+          readerItem ? (
+            <>
+              <NewsExploreLinks
+                title={readerItem.title}
+                sourceDisplayName={readerItem.sourceDisplayName}
+              />
+              <RelatedVideosFromNews
+                title={readerItem.title}
+                sourceDisplayName={readerItem.sourceDisplayName}
+              />
+              <RelatedReposFromNews
+                title={readerItem.title}
+                sourceDisplayName={readerItem.sourceDisplayName}
+              />
+            </>
           ) : null
         }
         className={

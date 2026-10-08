@@ -121,6 +121,7 @@ const ReaderBody = forwardRef<
     onDeepDiveLanguageChange?: (language: NewsDeepDiveLanguage) => void;
     onGenerateDeepDive?: () => void;
     onRegenerateDeepDive?: () => void;
+    relatedPanel?: ReactNode;
     reduce: boolean | null;
   }
 >(function ReaderBody(
@@ -137,6 +138,7 @@ const ReaderBody = forwardRef<
     onDeepDiveLanguageChange,
     onGenerateDeepDive,
     onRegenerateDeepDive,
+    relatedPanel,
     reduce,
   },
   ref,
@@ -180,6 +182,10 @@ const ReaderBody = forwardRef<
           {item.title || "Untitled"}
         </h2>
       </div>
+
+      {relatedPanel ? (
+        <div className="flex flex-col gap-1">{relatedPanel}</div>
+      ) : null}
 
       <section className="flex flex-col gap-2" aria-label="Jev brief" aria-busy={briefLoading}>
         <h3 className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -379,7 +385,9 @@ const ReaderBody = forwardRef<
             </a>
           </Button>
         </div>
-      ) : null}
+      ) : (
+        <div className="pb-[max(1rem,env(safe-area-inset-bottom))]" />
+      )}
     </motion.div>
   );
 });
@@ -407,6 +415,7 @@ export function NewsReaderPane({
   readerTab = "read",
   onReaderTabChange,
   graphPanel,
+  relatedPanel,
 }: {
   item: NewsFeedItem | null;
   onClose: () => void;
@@ -434,6 +443,8 @@ export function NewsReaderPane({
   onReaderTabChange?: (tab: NewsReaderTab) => void;
   /** Optional knowledge-graph panel (apps/web injects Arc canvas). */
   graphPanel?: ReactNode;
+  /** Optional related-content bridge (videos/repos) below the story body. */
+  relatedPanel?: ReactNode;
 }) {
   const reduce = useReducedMotion();
   const canPin = typeof onTogglePin === "function";
@@ -573,6 +584,7 @@ export function NewsReaderPane({
                   onDeepDiveLanguageChange={onDeepDiveLanguageChange}
                   onGenerateDeepDive={onGenerateDeepDive}
                   onRegenerateDeepDive={onRegenerateDeepDive}
+                  relatedPanel={relatedPanel}
                   reduce={reduce}
                 />
               </AnimatePresence>
