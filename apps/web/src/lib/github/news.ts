@@ -1,9 +1,18 @@
 import type { GithubHeadline } from "./types";
 
+/** SerpAPI google_news may return source as a string or `{ name, icon, authors }`. */
+export type SerpNewsSource =
+  | string
+  | {
+      name?: string;
+      icon?: string;
+      authors?: string[];
+    };
+
 export type SerpNewsResultRaw = {
   title?: string;
   link?: string;
-  source?: string;
+  source?: SerpNewsSource;
   date?: string;
   snippet?: string;
 };
@@ -17,6 +26,24 @@ function stableHeadlineId(link: string, title: string): string {
   return `h${Math.abs(h).toString(36)}`;
 }
 
+function normalizeSerpSource(source: SerpNewsSource | undefined): string | null {
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    return trimmed || null;
+  }
+  if (source && typeof source === "object" && typeof source.name === "string") {
+    const trimmed = source.name.trim();
+    return trimmed || null;
+  }
+  return null;
+}
+
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
 export function mapSerpNewsItem(
   raw: SerpNewsResultRaw,
   topicId: string | null,
@@ -25,13 +52,17 @@ export function mapSerpNewsItem(
   const link = (raw.link ?? "").trim();
   if (!title || !link) return null;
   if (!/^https?:\/\//i.test(link)) return null;
+  const snippet =
+    typeof raw.snippet === "string"
+      ? raw.snippet.replace(/\s+/g, " ").trim() || null
+      : null;
   return {
     id: stableHeadlineId(link, title),
     title,
     link,
-    source: raw.source?.trim() || null,
-    date: raw.date?.trim() || null,
-    snippet: raw.snippet?.replace(/\s+/g, " ").trim() || null,
+    source: normalizeSerpSource(raw.source),
+    date: asTrimmedString(raw.date),
+    snippet,
     topicId,
   };
 }

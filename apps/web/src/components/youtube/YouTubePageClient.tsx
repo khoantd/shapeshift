@@ -17,9 +17,12 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
 import type { VideoBriefTone, VideoTopic } from "@shapeshift/core/jev/videoClassify";
 import { ConceptOverlay } from "@/components/youtube/ConceptOverlay";
+import { RelatedNewsSection } from "@/components/shared/RelatedNewsSection";
+import { RelatedReposSection } from "@/components/youtube/RelatedReposSection";
 import { WatchCompanion } from "@/components/youtube/WatchCompanion";
 import { YouTubeHomeEmptyState } from "@/components/youtube/YouTubeHomeEmptyState";
 import {
@@ -190,7 +193,14 @@ export function YouTubePageClient({
 }: Props) {
   const listboxId = useId();
   const locale = useLocale();
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  const [query, setQuery] = useState(() => {
+    const videoId = searchParams.get("videoId")?.trim() ?? "";
+    const q = searchParams.get("q")?.trim() ?? "";
+    if (q.length >= 2) return q;
+    if (videoId && /^[\w-]{11}$/.test(videoId)) return videoId;
+    return "";
+  });
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [selected, setSelected] = useState<YouTubeVideo | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -251,10 +261,52 @@ export function YouTubePageClient({
   const transcriptVideoRef = useRef<string>("");
   /** When true, next selected?.videoId effect restores history (keep pack, skip classify/transcript). */
   const historyRestoreRef = useRef(false);
+  const deepLinkDone = useRef(false);
 
   useEffect(() => {
     setSummaryLang(toAiLanguage(locale));
   }, [locale]);
+
+  /** Select video from `?videoId=` once (GitHub bridge deep links). */
+  useEffect(() => {
+    if (deepLinkDone.current) return;
+    deepLinkDone.current = true;
+    const videoId = searchParams.get("videoId")?.trim() ?? "";
+    if (!videoId || !/^[\w-]{11}$/.test(videoId)) return;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/youtube/search?videoId=${encodeURIComponent(videoId)}`,
+        );
+        const body = (await res.json()) as SearchResponse;
+        if (body.success && body.videos?.[0]) {
+          startTransition(() => {
+            setSelected(body.videos![0]!);
+            setPlaying(false);
+            setVideos(body.videos ?? []);
+          });
+        }
+      } catch {
+        /* ignore — debounced search may still help */
+      }
+    })();
+  }, [searchParams]);
+
+  /** Keep URL in sync for shareable YouTube ↔ GitHub bridges. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("oauth")) return;
+    const q = query.trim();
+    if (q) url.searchParams.set("q", q);
+    else url.searchParams.delete("q");
+    if (selected?.videoId) url.searchParams.set("videoId", selected.videoId);
+    else url.searchParams.delete("videoId");
+    const next = `${url.pathname}${url.search}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState({}, "", next);
+    }
+  }, [query, selected?.videoId]);
 
   const resetPackState = useCallback(() => {
     setTranscript("");
@@ -1250,6 +1302,19 @@ export function YouTubePageClient({
                         <X className="size-4" aria-hidden />
                       </button>
                     </div>
+
+                    <RelatedReposSection
+                      title={selected.title}
+                      channelTitle={selected.channelTitle}
+                      topicLabel={classify ? topicLabel(classify.topic) : null}
+                    />
+
+                    <RelatedNewsSection
+                      source="video"
+                      title={selected.title}
+                      channelTitle={selected.channelTitle}
+                      topicLabel={classify ? topicLabel(classify.topic) : null}
+                    />
 
                     <WatchCompanion
                       packText={packText}

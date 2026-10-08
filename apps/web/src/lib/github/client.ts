@@ -34,9 +34,15 @@ import {
   parseRepoFullName,
   type ReadmeFetchResult,
 } from "./readme";
+import {
+  buildRepoTreeResult,
+  type GithubRepoTree,
+  type GithubTreeEntryRaw,
+} from "./repoTree";
 import type {
   GithubActivityResult,
   GithubNewsResult,
+  GithubRepoCard,
   GithubSearchResult,
   GithubTrendingResult,
 } from "./types";
@@ -313,6 +319,180 @@ export async function fetchRepoReadme(input: {
       fullName: parsed.fullName,
       markdown,
       htmlUrl: `https://github.com/${parsed.fullName}#readme`,
+    }),
+  };
+}
+
+/**
+ * Fetch a single public repo as a card (for `?repo=` deep links).
+ */
+export async function fetchRepoCard(input: {
+  repo: string;
+  signal?: AbortSignal;
+}): Promise<
+  | { ok: true; data: GithubRepoCard }
+  | { ok: false; reason: "missing" | "upstream"; message: string }
+> {
+  const parsed = parseRepoFullName(input.repo);
+  if (!parsed.ok) {
+    return { ok: false, reason: "upstream", message: parsed.error };
+  }
+
+  const url = `${GH_API}/repos/${parsed.owner}/${parsed.name}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: githubHeaders(),
+      signal: input.signal,
+      next: { revalidate: 600 },
+    });
+  } catch (e) {
+    if (input.signal?.aborted) throw e;
+    return {
+      ok: false,
+      reason: "upstream",
+      message: e instanceof Error ? e.message : "Repo fetch failed",
+    };
+  }
+
+  if (res.status === 404) {
+    return { ok: false, reason: "missing", message: "Repository not found" };
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return {
+      ok: false,
+      reason: "upstream",
+      message: `GitHub repo failed (${res.status})${text ? `: ${text.slice(0, 200)}` : ""}`,
+    };
+  }
+
+  const raw = (await res.json()) as {
+    id?: number;
+    full_name?: string;
+    name?: string;
+    description?: string | null;
+    html_url?: string;
+    language?: string | null;
+    stargazers_count?: number;
+    forks_count?: number;
+    open_issues_count?: number;
+    topics?: string[];
+    pushed_at?: string | null;
+    created_at?: string | null;
+    owner?: { login?: string };
+  };
+  const card = mapSearchItemToCard(raw, []);
+  if (!card) {
+    return {
+      ok: false,
+      reason: "upstream",
+      message: "Could not map repository",
+    };
+  }
+  return { ok: true, data: card };
+}
+
+/**
+ * Recursive default-branch tree, trimmed for AI prompts.
+ */
+export async function fetchRepoTree(input: {
+  repo: string;
+  signal?: AbortSignal;
+}): Promise<
+  | { ok: true; data: GithubRepoTree }
+  | { ok: false; reason: "missing" | "upstream"; message: string }
+> {
+  const parsed = parseRepoFullName(input.repo);
+  if (!parsed.ok) {
+    return { ok: false, reason: "upstream", message: parsed.error };
+  }
+
+  const metaUrl = `${GH_API}/repos/${parsed.owner}/${parsed.name}`;
+  let metaRes: Response;
+  try {
+    metaRes = await fetch(metaUrl, {
+      headers: githubHeaders(),
+      signal: input.signal,
+      next: { revalidate: 600 },
+    });
+  } catch (e) {
+    if (input.signal?.aborted) throw e;
+    return {
+      ok: false,
+      reason: "upstream",
+      message: e instanceof Error ? e.message : "Repo meta fetch failed",
+    };
+  }
+
+  if (metaRes.status === 404) {
+    return { ok: false, reason: "missing", message: "Repository not found" };
+  }
+  if (!metaRes.ok) {
+    return {
+      ok: false,
+      reason: "upstream",
+      message: `GitHub repo failed (${metaRes.status})`,
+    };
+  }
+
+  const meta = (await metaRes.json()) as {
+    default_branch?: string;
+  };
+  const defaultBranch =
+    typeof meta.default_branch === "string" && meta.default_branch.trim()
+      ? meta.default_branch.trim()
+      : "main";
+
+  const treeUrl = `${GH_API}/repos/${parsed.owner}/${parsed.name}/git/trees/${encodeURIComponent(defaultBranch)}?recursive=1`;
+  let treeRes: Response;
+  try {
+    treeRes = await fetch(treeUrl, {
+      headers: githubHeaders(),
+      signal: input.signal,
+      next: { revalidate: 600 },
+    });
+  } catch (e) {
+    if (input.signal?.aborted) throw e;
+    return {
+      ok: false,
+      reason: "upstream",
+      message: e instanceof Error ? e.message : "Tree fetch failed",
+    };
+  }
+
+  if (treeRes.status === 404) {
+    return { ok: false, reason: "missing", message: "Repository tree not found" };
+  }
+  if (!treeRes.ok) {
+    const text = await treeRes.text().catch(() => "");
+    return {
+      ok: false,
+      reason: "upstream",
+      message: `GitHub tree failed (${treeRes.status})${text ? `: ${text.slice(0, 200)}` : ""}`,
+    };
+  }
+
+  const body = (await treeRes.json()) as {
+    tree?: GithubTreeEntryRaw[];
+    truncated?: boolean;
+  };
+  const entries = Array.isArray(body.tree) ? body.tree : [];
+  if (entries.length === 0) {
+    return {
+      ok: false,
+      reason: "missing",
+      message: "Repository tree is empty",
+    };
+  }
+
+  return {
+    ok: true,
+    data: buildRepoTreeResult({
+      fullName: parsed.fullName,
+      defaultBranch,
+      entries,
+      apiTruncated: body.truncated === true,
     }),
   };
 }

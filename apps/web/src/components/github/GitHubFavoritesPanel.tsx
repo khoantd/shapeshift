@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { BrandBackdrop } from "@/components/brand/BrandBackdrop";
 import { PanelRailButton } from "@/components/youtube/panel-rail";
+import type { ExampleRepoChip } from "@/lib/github/exampleRepos";
+import type { RecentRepoChip } from "@/lib/github/recentRepos";
 import { GITHUB_TOPIC_CATALOG } from "@/lib/github/topics";
 import type { GithubRepoCard } from "@/lib/github/types";
 
@@ -49,6 +51,10 @@ export type GitHubFavoritesPanelProps = {
   listMode: GitHubListMode;
   searchBusy: boolean;
   searchError: string | null;
+  exampleRepos: readonly ExampleRepoChip[];
+  recentRepos: readonly RecentRepoChip[];
+  onOpenFullName: (fullName: string) => void;
+  onClearRecent: () => void;
 };
 
 function formatUpdated(fetchedAt: number | null): string | null {
@@ -89,6 +95,10 @@ export function GitHubFavoritesPanel({
   listMode,
   searchBusy,
   searchError,
+  exampleRepos,
+  recentRepos,
+  onOpenFullName,
+  onClearRecent,
 }: GitHubFavoritesPanelProps) {
   const t = useTranslations("GitHub");
   const favSet = new Set(favoriteTopicIds);
@@ -105,6 +115,8 @@ export function GitHubFavoritesPanel({
       : t("noRepos");
   const loadingMessage =
     listMode === "api" ? t("loadingSearch") : t("loadingTrending");
+  const showStarterChips =
+    !searchQuery.trim() && (exampleRepos.length > 0 || recentRepos.length > 0);
 
   const focusSearch = () => {
     if (collapsed) onToggleCollapsed();
@@ -236,7 +248,7 @@ export function GitHubFavoritesPanel({
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}
             onKeyDown={onSearchKeyDown}
-            placeholder={t("searchPlaceholder")}
+            placeholder={t("searchPlaceholderUrl")}
             aria-busy={searchBusy}
             className="h-10 w-full rounded-md border border-border bg-background pe-9 ps-9 text-[13px] text-foreground placeholder:text-muted-foreground transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
@@ -251,6 +263,58 @@ export function GitHubFavoritesPanel({
             </button>
           ) : null}
         </div>
+
+        {showStarterChips ? (
+          <div className="flex flex-col gap-2">
+            {recentRepos.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {t("recentRepos")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onClearRecent}
+                    className="cursor-pointer text-[11px] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  >
+                    {t("clearRecent")}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {recentRepos.map((chip) => (
+                    <button
+                      key={chip.fullName}
+                      type="button"
+                      onClick={() => onOpenFullName(chip.fullName)}
+                      className="inline-flex h-7 max-w-full cursor-pointer items-center truncate rounded-md border border-border bg-background px-2 text-[11px] font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      {chip.fullName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {exampleRepos.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {t("exampleRepos")}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {exampleRepos.map((chip) => (
+                    <button
+                      key={chip.fullName}
+                      type="button"
+                      onClick={() => onOpenFullName(chip.fullName)}
+                      className="inline-flex h-7 cursor-pointer items-center rounded-md border border-dashed border-border bg-muted/30 px-2 text-[11px] font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       <div className="relative z-[1] flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-5">

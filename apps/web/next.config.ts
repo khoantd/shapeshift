@@ -37,12 +37,31 @@ const nextIntlRequestAbs = path.join(__dirname, "src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@shapeshift/core", "@shapeshift/react"],
+  serverExternalPackages: [
+    "remotion",
+    "@remotion/bundler",
+    "@remotion/renderer",
+    "@remotion/vercel",
+    "@remotion/media-utils",
+    "@remotion/compositor-darwin-arm64",
+    "@remotion/compositor-darwin-x64",
+    "@remotion/compositor-linux-x64-gnu",
+    "@remotion/compositor-linux-x64-musl",
+    "@remotion/compositor-linux-arm64-gnu",
+    "@remotion/compositor-linux-arm64-musl",
+    "@remotion/compositor-win32-x64-msvc",
+    "openai",
+    "@aws-sdk/client-s3",
+    "@aws-sdk/s3-request-presigner",
+    "@vercel/sandbox",
+  ],
   compiler: {
     // Vendored neo4j-arc GraphVisualizer uses styled-components v5.
     styledComponents: true,
   },
   outputFileTracingIncludes: {
     "/*": ["./vendor/neo4j-arc/**/*"],
+    "/api/github/video": ["./src/remotion/**/*"],
   },
   async redirects() {
     return [

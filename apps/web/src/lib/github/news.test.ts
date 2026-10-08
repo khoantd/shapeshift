@@ -30,6 +30,32 @@ describe("mapSerpNewsItem", () => {
       ),
     ).toBeNull();
   });
+
+  test("maps SerpAPI source object with name", () => {
+    const h = mapSerpNewsItem(
+      {
+        title: "Object source headline",
+        link: "https://example.com/obj",
+        source: { name: "Ars Technica", icon: "https://example.com/i.png" },
+        date: "2 hours ago",
+      },
+      "ai",
+    );
+    expect(h?.source).toBe("Ars Technica");
+    expect(h?.date).toBe("2 hours ago");
+  });
+
+  test("ignores non-string source without throwing", () => {
+    const h = mapSerpNewsItem(
+      {
+        title: "Odd source",
+        link: "https://example.com/odd",
+        source: { icon: "https://example.com/i.png" },
+      },
+      null,
+    );
+    expect(h?.source).toBeNull();
+  });
 });
 
 describe("mergeHeadlines", () => {

@@ -13,6 +13,15 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { BrandBackdrop } from "@/components/brand/BrandBackdrop";
 import { SITE_CHROME_OFFSET_CLASS } from "@/lib/site-chrome";
+import { GITHUB_EXAMPLE_REPOS } from "@/lib/github/exampleRepos";
+import {
+  clearRecentRepos,
+  pushRecentRepo,
+  readRecentRepos,
+  writeRecentRepos,
+  type RecentRepoChip,
+} from "@/lib/github/recentRepos";
+import { parseGitHubRepoUrl } from "@/lib/github/repoUrl";
 import {
   filterReposByQuery,
   parseSearchQuery,
@@ -70,6 +79,13 @@ function syncQueryParam(q: string) {
   const trimmed = q.trim();
   if (trimmed) url.searchParams.set("q", trimmed);
   else url.searchParams.delete("q");
+  window.history.replaceState({}, "", url.pathname + url.search);
+}
+
+function syncRepoParam(fullName: string | null) {
+  const url = new URL(window.location.href);
+  if (fullName) url.searchParams.set("repo", fullName);
+  else url.searchParams.delete("repo");
   window.history.replaceState({}, "", url.pathname + url.search);
 }
 
@@ -132,6 +148,8 @@ export function GitHubPageClient({
   const searchAbortRef = useRef<AbortController | null>(null);
 
   const [selected, setSelected] = useState<GithubRepoCard | null>(null);
+  const [recentRepos, setRecentRepos] = useState<RecentRepoChip[]>([]);
+  const repoDeepLinkDone = useRef(false);
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -347,8 +365,64 @@ export function GitHubPageClient({
   }, []);
 
   useEffect(() => {
+    setRecentRepos(readRecentRepos());
+  }, []);
+
+  useEffect(() => {
     void loadFavorites(oauthConnected);
   }, [oauthConnected, loadFavorites]);
+
+  const selectRepo = useCallback(
+    (repo: GithubRepoCard) => {
+      setSelected(repo);
+      syncRepoParam(repo.fullName);
+      const next = pushRecentRepo(readRecentRepos(), repo.fullName);
+      writeRecentRepos(next);
+      setRecentRepos(next);
+      if (!isLg) setRightCollapsed(false);
+    },
+    [isLg],
+  );
+
+  const openFullName = useCallback(
+    async (raw: string) => {
+      const parsed = parseGitHubRepoUrl(raw) ?? parseGitHubRepoUrl(`https://github.com/${raw.trim()}`);
+      if (!parsed) return;
+      const existing = displayedRepos.find(
+        (r) => r.fullName.toLowerCase() === parsed.fullName.toLowerCase(),
+      );
+      if (existing) {
+        selectRepo(existing);
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/github/repo?repo=${encodeURIComponent(parsed.fullName)}`,
+        );
+        const body = (await res.json()) as {
+          success?: boolean;
+          repo?: GithubRepoCard;
+        };
+        if (res.ok && body.success && body.repo) {
+          selectRepo(body.repo);
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [displayedRepos, selectRepo],
+  );
+
+  useEffect(() => {
+    if (repoDeepLinkDone.current) return;
+    const raw = searchParams.get("repo");
+    if (!raw?.trim()) {
+      repoDeepLinkDone.current = true;
+      return;
+    }
+    repoDeepLinkDone.current = true;
+    void openFullName(raw);
+  }, [openFullName, searchParams]);
 
   useEffect(() => {
     void loadTrending(favoriteTopicIds);
@@ -503,11 +577,21 @@ export function GitHubPageClient({
       }
       if (e.key === "Enter") {
         e.preventDefault();
+        const asRepo = parseGitHubRepoUrl(query);
+        if (asRepo) {
+          void openFullName(asRepo.fullName);
+          return;
+        }
         void runSearch(query);
       }
     },
-    [onSearchClear, query, runSearch],
+    [onSearchClear, openFullName, query, runSearch],
   );
+
+  const onClearRecent = useCallback(() => {
+    clearRecentRepos();
+    setRecentRepos([]);
+  }, []);
 
   const onSignOut = useCallback(async () => {
     setOauthBusy(true);
@@ -549,10 +633,7 @@ export function GitHubPageClient({
         onSignOut={onSignOut}
         repos={displayedRepos}
         selectedRepoId={selected?.id ?? null}
-        onSelectRepo={(repo) => {
-          setSelected(repo);
-          if (!isLg) setRightCollapsed(false);
-        }}
+        onSelectRepo={selectRepo}
         trendingBusy={trendingBusy}
         trendingError={trendingError}
         fetchedAt={fetchedAt}
@@ -569,6 +650,12 @@ export function GitHubPageClient({
         listMode={listMode}
         searchBusy={searchBusy}
         searchError={searchError}
+        exampleRepos={GITHUB_EXAMPLE_REPOS}
+        recentRepos={recentRepos}
+        onOpenFullName={(fullName) => {
+          void openFullName(fullName);
+        }}
+        onClearRecent={onClearRecent}
       />
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
@@ -582,14 +669,17 @@ export function GitHubPageClient({
             {selected ? (
               <GitHubRepoDetail
                 repo={selected}
-                onClose={() => setSelected(null)}
+                onClose={() => {
+                  setSelected(null);
+                  syncRepoParam(null);
+                }}
               />
             ) : (
               <GitHubHomeEmptyState
                 trendingPreview={repos}
                 favoriteTopicIds={favoriteTopicIds}
                 onToggleTopic={toggleTopic}
-                onSelectRepo={setSelected}
+                onSelectRepo={selectRepo}
                 onFocusFavorites={() => {
                   if (isLg) setLeftCollapsed(false);
                   requestAnimationFrame(() => {

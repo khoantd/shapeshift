@@ -12,16 +12,19 @@
 
 ## Goal
 
-Add dual-mode repository search on `/github` (instant trending filter + GitHub Search API).
+Ship GitHub AI supplements + News↔YouTube↔GitHub learning triangle on Meanbox.
 
 ## Done
 
-- `apps/web/src/lib/github/searchQuery.ts` + unit tests (`parseSearchQuery`, `filterReposByQuery`)
-- `fetchRepoSearch` in `apps/web/src/lib/github/client.ts`
-- `GET /api/github/search` route
-- Dual-mode UI in `GitHubPageClient` + `GitHubFavoritesPanel` (debounce, `?q=`, Cmd/Ctrl+K, a11y)
-- en/vi i18n strings under `GitHub.*`
-- `bun test` for searchQuery + trending helpers; `tsc --noEmit` clean
+- Dual-mode `/github` search (prior)
+- Phase 1: diagram + explainer + Mermaid (+ Remotion video)
+- Phase 2 YouTube↔GitHub bridge
+- Phase 3 News triangle (this session, uncommitted):
+  - Related news on repo detail + YouTube selection
+  - Related videos/repos in News reader (`relatedPanel` on `NewsReaderPane`)
+  - `/news?q=&story=` hydrate/sync
+  - Query helpers + unit tests; en/vi i18n; typecheck green
+- Prod env synced: `OPENAI_API_KEY`, `MINIO_*` (7 vars) on Vercel production (prior)
 
 ## In progress
 
@@ -29,21 +32,30 @@ Add dual-mode repository search on `/github` (instant trending filter + GitHub S
 
 ## Next
 
-1. Browser smoke on `/github`: 1-char filter, 2+ API results, clear, select → detail, `?q=` round-trip
-2. Optional: commit when user asks
-3. Prior Company Brain promote still blocked on human (see previous session)
+1. Browser smoke: News story → related video → related repo → related news
+2. Commit when user asks (Phase 1–3 + Remotion + bridges)
 
 ## Decisions
 
-- Mode 3: local filter of trending while typing; debounced API at ≥2 chars; clear restores trending
-- Reuse Meanbox tokens / Lucide icons; no separate design-system palette
-- Sort API results by stars (matches existing GitHub client helper)
+- Third vertex = main `/news` (Inspired Canvas), not GitHub SerpAPI headlines
+- Reuse `/api/news`, `/api/youtube/search`, `/api/github/search` (no new bridge APIs)
+- Deep links: `/news?q=&story=`, `/youtube?q=&videoId=`, `/github?q=&repo=`
+- Related lists capped at 5 items
+- Preserve existing Meanbox visuals (no new palette)
+
+## Gotchas
+
+- Lucide has no `Youtube` icon — use `PlaySquare`; news uses `Newspaper`
+- `/api/news` needs Inspired Canvas credentials (401 → relatedNewsUnavailable)
+- Remotion render on Vercel is heavy; MinIO must be reachable from Vercel (not localhost)
 
 ## Pointers
 
 | Item | Location |
 |------|----------|
-| Search helpers | `apps/web/src/lib/github/searchQuery.ts` |
-| API | `apps/web/src/app/api/github/search/route.ts` |
-| UI | `apps/web/src/components/github/GitHubPageClient.tsx` |
-| Plan | `.cursor/plans/github_repo_search_ec58e276.plan.md` (or user plans dir) |
+| Related news UI | `apps/web/src/components/shared/RelatedNewsSection.tsx` |
+| News → videos/repos | `apps/web/src/components/news/RelatedVideosFromNews.tsx`, `RelatedReposFromNews.tsx` |
+| News query helpers | `apps/web/src/lib/news/relatedNewsQuery.ts` |
+| News deep link | `NewsPageClient.tsx` (`?q=` / `?story=`) |
+| Reader related slot | `packages/react/.../NewsReaderPane.tsx` (`relatedPanel`) |
+| Prod URL | https://shapeshift-bay.vercel.app |
