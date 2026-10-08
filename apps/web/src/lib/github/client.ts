@@ -16,6 +16,10 @@ import {
   resolveTopics,
 } from "./topics";
 import {
+  SEARCH_API_PER_PAGE,
+  parseSearchQuery,
+} from "./searchQuery";
+import {
   TRENDING_PER_QUERY,
   TRENDING_WINDOW_DAYS,
   buildGlobalHotQuery,
@@ -33,6 +37,7 @@ import {
 import type {
   GithubActivityResult,
   GithubNewsResult,
+  GithubSearchResult,
   GithubTrendingResult,
 } from "./types";
 
@@ -53,7 +58,7 @@ function githubHeaders(): HeadersInit {
 
 async function searchRepositories(
   q: string,
-  opts?: { perPage?: number; signal?: AbortSignal },
+  opts?: { perPage?: number; signal?: AbortSignal; revalidate?: number },
 ): Promise<GithubSearchRepoRaw[]> {
   const url = new URL(`${GH_API}/search/repositories`);
   url.searchParams.set("q", q);
@@ -67,7 +72,7 @@ async function searchRepositories(
   const res = await fetch(url.toString(), {
     headers: githubHeaders(),
     signal: opts?.signal,
-    next: { revalidate: 600 },
+    next: { revalidate: opts?.revalidate ?? 600 },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -77,6 +82,33 @@ async function searchRepositories(
   }
   const data = (await res.json()) as { items?: GithubSearchRepoRaw[] };
   return Array.isArray(data.items) ? data.items : [];
+}
+
+/**
+ * Free-text public repository search (GitHub Search API).
+ * Caller must pass a query already validated via parseSearchQuery, or a raw string.
+ */
+export async function fetchRepoSearch(input: {
+  q: string;
+  perPage?: number;
+  signal?: AbortSignal;
+}): Promise<GithubSearchResult> {
+  const query = parseSearchQuery(input.q);
+  if (!query) {
+    throw new Error("Search query must be at least 2 characters");
+  }
+  const raw = await searchRepositories(query, {
+    perPage: input.perPage ?? SEARCH_API_PER_PAGE,
+    signal: input.signal,
+    revalidate: 60,
+  });
+  return {
+    query,
+    fetchedAt: Date.now(),
+    repos: raw
+      .map((r) => mapSearchItemToCard(r, []))
+      .filter((r): r is NonNullable<typeof r> => Boolean(r)),
+  };
 }
 
 export async function fetchTrendingRepos(input: {

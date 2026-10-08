@@ -53,6 +53,12 @@ export type GithubTrendingResult = {
   windowDays: number;
 };
 
+export type GithubSearchResult = {
+  repos: GithubRepoCard[];
+  query: string;
+  fetchedAt: number;
+};
+
 export type GithubNewsResult = {
   headlines: GithubHeadline[];
   topicsUsed: string[];

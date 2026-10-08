@@ -6,23 +6,22 @@
 
 | Field | Value |
 |-------|-------|
-| **Updated** | 2026-10-07 |
+| **Updated** | 2026-10-08 |
 | **Phase** | build |
 | **Tool** | cursor |
 
 ## Goal
 
-GitHub repo detail — about + README + on-demand AI summary.
+Add dual-mode repository search on `/github` (instant trending filter + GitHub Search API).
 
 ## Done
 
-- Prior: `/github` monitor (trending, favorites, activity, headlines)
-- Repo detail on select:
-  - `GET /api/github/readme` + `fetchRepoReadme` (GitHub Contents API raw markdown)
-  - `POST /api/github/summarize` + Perplexity `runGithubRepoSummary` (on demand)
-  - `GitHubRepoDetail` — about block, Summarize button, README via `MarkdownBody`
-  - Unit tests: `readme.test.ts`, `repoSummaryParse.test.ts`
-  - en/vi i18n + FEATURES.md row
+- `apps/web/src/lib/github/searchQuery.ts` + unit tests (`parseSearchQuery`, `filterReposByQuery`)
+- `fetchRepoSearch` in `apps/web/src/lib/github/client.ts`
+- `GET /api/github/search` route
+- Dual-mode UI in `GitHubPageClient` + `GitHubFavoritesPanel` (debounce, `?q=`, Cmd/Ctrl+K, a11y)
+- en/vi i18n strings under `GitHub.*`
+- `bun test` for searchQuery + trending helpers; `tsc --noEmit` clean
 
 ## In progress
 
@@ -30,20 +29,21 @@ GitHub repo detail — about + README + on-demand AI summary.
 
 ## Next
 
-1. Browser smoke `/github`: select repo → README loads; Summarize with `PERPLEXITY_API_KEY`
-2. Optional: commit this slice
-3. Still pending from prior: Convex `githubFavorites` deploy if not done
+1. Browser smoke on `/github`: 1-char filter, 2+ API results, clear, select → detail, `?q=` round-trip
+2. Optional: commit when user asks
+3. Prior Company Brain promote still blocked on human (see previous session)
 
 ## Decisions
 
-- About + README always; AI summary on button click (not auto)
-- No Convex persistence for repo summaries (session Map + server LRU)
-- Render markdown with `@shapeshift/react` `MarkdownBody`
+- Mode 3: local filter of trending while typing; debounced API at ≥2 chars; clear restores trending
+- Reuse Meanbox tokens / Lucide icons; no separate design-system palette
+- Sort API results by stars (matches existing GitHub client helper)
 
 ## Pointers
 
 | Item | Location |
 |------|----------|
-| README / summary libs | `apps/web/src/lib/github/readme.ts`, `repoSummary.ts`, `repoSummaryParse.ts` |
-| APIs | `apps/web/src/app/api/github/readme`, `summarize` |
-| Detail UI | `apps/web/src/components/github/GitHubRepoDetail.tsx` |
+| Search helpers | `apps/web/src/lib/github/searchQuery.ts` |
+| API | `apps/web/src/app/api/github/search/route.ts` |
+| UI | `apps/web/src/components/github/GitHubPageClient.tsx` |
+| Plan | `.cursor/plans/github_repo_search_ec58e276.plan.md` (or user plans dir) |

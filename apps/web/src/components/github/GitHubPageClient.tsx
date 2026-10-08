@@ -1,10 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { BrandBackdrop } from "@/components/brand/BrandBackdrop";
 import { SITE_CHROME_OFFSET_CLASS } from "@/lib/site-chrome";
+import {
+  filterReposByQuery,
+  parseSearchQuery,
+} from "@/lib/github/searchQuery";
 import {
   DEFAULT_TRENDING_TOPICS,
   normalizeFavoriteTopics,
@@ -16,7 +28,10 @@ import type {
   GithubReleaseItem,
   GithubRepoCard,
 } from "@/lib/github/types";
-import { GitHubFavoritesPanel } from "./GitHubFavoritesPanel";
+import {
+  GitHubFavoritesPanel,
+  type GitHubListMode,
+} from "./GitHubFavoritesPanel";
 import { GitHubHomeEmptyState } from "./GitHubHomeEmptyState";
 import {
   GitHubNewsPanel,
@@ -25,6 +40,7 @@ import {
 import { GitHubRepoDetail } from "./GitHubRepoDetail";
 
 const LOCAL_TOPICS_KEY = "meanbox:github:topics";
+const SEARCH_DEBOUNCE_MS = 300;
 
 function readLocalTopics(): string[] {
   if (typeof window === "undefined") return [];
@@ -47,6 +63,14 @@ function writeLocalTopics(topics: string[]) {
   } catch {
     /* ignore */
   }
+}
+
+function syncQueryParam(q: string) {
+  const url = new URL(window.location.href);
+  const trimmed = q.trim();
+  if (trimmed) url.searchParams.set("q", trimmed);
+  else url.searchParams.delete("q");
+  window.history.replaceState({}, "", url.pathname + url.search);
 }
 
 function useIsLg() {
@@ -79,6 +103,7 @@ export function GitHubPageClient({
   const t = useTranslations("GitHub");
   const searchParams = useSearchParams();
   const isLg = useIsLg();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [oauthConnected, setOauthConnected] = useState(initialOAuthConnected);
   const [oauthEmail, setOauthEmail] = useState(initialOAuthEmail);
@@ -95,6 +120,16 @@ export function GitHubPageClient({
   const [trendingBusy, setTrendingBusy] = useState(false);
   const [trendingError, setTrendingError] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const deferredQuery = useDeferredValue(query);
+  const [searchRepos, setSearchRepos] = useState<GithubRepoCard[]>([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [committedApiQuery, setCommittedApiQuery] = useState<string | null>(
+    null,
+  );
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   const [selected, setSelected] = useState<GithubRepoCard | null>(null);
 
@@ -116,6 +151,28 @@ export function GitHubPageClient({
   tRef.current = t;
   const favoriteTopicIdsRef = useRef(favoriteTopicIds);
   favoriteTopicIdsRef.current = favoriteTopicIds;
+
+  const parsedApiQuery = parseSearchQuery(deferredQuery);
+  const listMode: GitHubListMode = useMemo(() => {
+    if (!deferredQuery.trim()) return "trending";
+    if (parsedApiQuery && committedApiQuery === parsedApiQuery) return "api";
+    return "filter";
+  }, [committedApiQuery, deferredQuery, parsedApiQuery]);
+
+  const displayedRepos = useMemo(() => {
+    const trimmed = deferredQuery.trim();
+    if (!trimmed) return repos;
+    if (parsedApiQuery && committedApiQuery === parsedApiQuery) {
+      return searchRepos;
+    }
+    return filterReposByQuery(repos, deferredQuery);
+  }, [
+    committedApiQuery,
+    deferredQuery,
+    parsedApiQuery,
+    repos,
+    searchRepos,
+  ]);
 
   const loadFavorites = useCallback(async (connected: boolean) => {
     if (!connected) {
@@ -234,6 +291,61 @@ export function GitHubPageClient({
     }
   }, []);
 
+  const runSearch = useCallback(async (raw: string) => {
+    const q = parseSearchQuery(raw);
+    if (!q) {
+      searchAbortRef.current?.abort();
+      setSearchRepos([]);
+      setSearchBusy(false);
+      setSearchError(null);
+      setCommittedApiQuery(null);
+      return;
+    }
+
+    searchAbortRef.current?.abort();
+    const ac = new AbortController();
+    searchAbortRef.current = ac;
+    setSearchBusy(true);
+    setSearchError(null);
+
+    try {
+      const res = await fetch(
+        `/api/github/search?q=${encodeURIComponent(q)}`,
+        { signal: ac.signal },
+      );
+      const body = (await res.json()) as {
+        success?: boolean;
+        repos?: GithubRepoCard[];
+        query?: string;
+        error?: string | { code?: string; message?: string };
+      };
+      if (ac.signal.aborted) return;
+      if (!res.ok || !body.success) {
+        const msg =
+          typeof body.error === "string"
+            ? body.error
+            : body.error?.message || tRef.current("errorSearch");
+        setSearchError(msg);
+        setSearchRepos([]);
+        setCommittedApiQuery(null);
+        return;
+      }
+      setSearchRepos(Array.isArray(body.repos) ? body.repos : []);
+      setCommittedApiQuery(
+        typeof body.query === "string" ? body.query : q,
+      );
+    } catch (e) {
+      if (ac.signal.aborted) return;
+      setSearchError(
+        e instanceof Error ? e.message : tRef.current("errorSearch"),
+      );
+      setSearchRepos([]);
+      setCommittedApiQuery(null);
+    } finally {
+      if (!ac.signal.aborted) setSearchBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadFavorites(oauthConnected);
   }, [oauthConnected, loadFavorites]);
@@ -244,8 +356,26 @@ export function GitHubPageClient({
   }, [favoriteTopicIds, loadTrending, loadHeadlines]);
 
   useEffect(() => {
-    void loadActivity(repos);
-  }, [repos, loadActivity]);
+    void loadActivity(displayedRepos);
+  }, [displayedRepos, loadActivity]);
+
+  useEffect(() => {
+    const q = deferredQuery.trim();
+    if (q.length < 2) {
+      searchAbortRef.current?.abort();
+      setSearchRepos([]);
+      setSearchBusy(false);
+      setSearchError(null);
+      setCommittedApiQuery(null);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void runSearch(q);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [deferredQuery, runSearch]);
 
   useEffect(() => {
     const oauth = searchParams.get("oauth");
@@ -279,6 +409,28 @@ export function GitHubPageClient({
     url.searchParams.delete("oauth");
     window.history.replaceState({}, "", url.pathname + url.search);
   }, [searchParams]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        if (target.id === "github-repo-search") return;
+      }
+      e.preventDefault();
+      if (isLg) setLeftCollapsed(false);
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isLg]);
 
   const persistTopics = useCallback(
     async (next: string[]) => {
@@ -326,6 +478,37 @@ export function GitHubPageClient({
     [persistTopics],
   );
 
+  const onSearchQueryChange = useCallback((value: string) => {
+    setQuery(value);
+    syncQueryParam(value);
+  }, []);
+
+  const onSearchClear = useCallback(() => {
+    setQuery("");
+    syncQueryParam("");
+    searchAbortRef.current?.abort();
+    setSearchRepos([]);
+    setSearchBusy(false);
+    setSearchError(null);
+    setCommittedApiQuery(null);
+    searchInputRef.current?.focus();
+  }, []);
+
+  const onSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onSearchClear();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void runSearch(query);
+      }
+    },
+    [onSearchClear, query, runSearch],
+  );
+
   const onSignOut = useCallback(async () => {
     setOauthBusy(true);
     try {
@@ -364,7 +547,7 @@ export function GitHubPageClient({
         oauthEmail={oauthEmail}
         oauthBusy={oauthBusy}
         onSignOut={onSignOut}
-        repos={repos}
+        repos={displayedRepos}
         selectedRepoId={selected?.id ?? null}
         onSelectRepo={(repo) => {
           setSelected(repo);
@@ -376,7 +559,16 @@ export function GitHubPageClient({
         onRefresh={() => {
           void loadTrending(favoriteTopicIds);
           void loadHeadlines(favoriteTopicIds);
+          if (parseSearchQuery(query)) void runSearch(query);
         }}
+        searchInputRef={searchInputRef}
+        searchQuery={query}
+        onSearchQueryChange={onSearchQueryChange}
+        onSearchClear={onSearchClear}
+        onSearchKeyDown={onSearchKeyDown}
+        listMode={listMode}
+        searchBusy={searchBusy}
+        searchError={searchError}
       />
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
@@ -400,6 +592,9 @@ export function GitHubPageClient({
                 onSelectRepo={setSelected}
                 onFocusFavorites={() => {
                   if (isLg) setLeftCollapsed(false);
+                  requestAnimationFrame(() => {
+                    searchInputRef.current?.focus();
+                  });
                 }}
               />
             )}
