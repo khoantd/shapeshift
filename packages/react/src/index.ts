@@ -1,5 +1,11 @@
 export { Shapeshift, type ShapeshiftProps } from "./shapeshift/Shapeshift";
 export { useIntent, createFetchClassify, type ClassifyFn, type UseIntentOptions, type IntentState, type IntentStatus } from "./hooks/useIntent";
+export {
+  createFetchStructureRtcfc,
+  createFetchStructureBcmt,
+  type StructureRtcfcFn,
+  type StructureBcmtFn,
+} from "./hooks/useStructurePrompt";
 export { useDemoScript, DEMO_SCRIPT, type DemoApi } from "./hooks/useDemoScript";
 export { registry, CARD_INTENTS } from "./intents/registry";
 export { NewsFeedItemCard, type NewsFeedItem } from "./intents/NewsFeedItemCard";

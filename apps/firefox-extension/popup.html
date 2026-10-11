@@ -26,6 +26,11 @@
       <div class="row">
         <button type="button" id="btn-gh" data-target="github">GitHub</button>
         <button type="button" id="btn-yt" data-target="youtube">YouTube</button>
+        <button type="button" id="btn-gadgets" data-target="gadgets">Gadgets</button>
+        <button type="button" id="btn-news" data-target="news">Deep dive</button>
+        <button type="button" id="btn-places" data-target="places">Places</button>
+      </div>
+      <div class="row">
         <button type="button" id="btn-sidebar">Sidebar</button>
         <button type="button" id="btn-options">Options</button>
       </div>
@@ -38,8 +43,9 @@
 
       <p class="status" id="status" hidden></p>
       <p class="hint">
-        Tip: type <code>mb</code> in the address bar, then a query. Prefix with
-        <code>yt:</code> for YouTube.
+        Tip: type <code>mb</code> in the address bar. Prefixes:
+        <code>yt:</code> <code>gh:</code> <code>g:</code> <code>news:</code>
+        <code>places:</code>.
       </p>
     </div>
     <script type="module" src="popup.js"></script>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Meanbox",
-  "version": "1.0.0",
-  "description": "GitHub repo lens, YouTube study companion, and Meanbox search from Firefox.",
+  "version": "1.3.1",
+  "description": "GitHub lens, YouTube study, in-sidebar news deep dive and Quick Gadgets (tip/split/convert/timer/RTCFC), and Places.",
   "browser_specific_settings": {
     "gecko": {
       "id": "meanbox@royalsolution",
@@ -56,7 +56,14 @@
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["activeTab", "contextMenus", "cookies", "storage", "tabs"],
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "cookies",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
   "host_permissions": [
     "https://meanbox.vercel.app/*",
     "http://localhost:3000/*",

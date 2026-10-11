@@ -1,8 +1,14 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useState } from "react";
 import { registry } from "../intents/registry";
+import {
+  SAVED_PAGE_SIZE,
+  filterSavedItems,
+  pageSavedItems,
+} from "../lib/filterSavedItems";
 import { spring, tween } from "../lib/motion";
 import type { SavedItem } from "../lib/savedItems";
 import { cn } from "../lib/utils";
@@ -21,6 +27,13 @@ export function RecentStack({
   onDelete: (item: SavedItem) => void;
 }) {
   const reduce = useReducedMotion();
+  const [query, setQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(SAVED_PAGE_SIZE);
+
+  const filtered = filterSavedItems(items, query, (intent) => registry[intent].label);
+  const { visible, hasMore, total } = pageSavedItems(filtered, visibleCount);
+  const searching = query.trim().length > 0;
+
   return (
     <AnimatePresence initial={false}>
       {items.length > 0 && (
@@ -35,8 +48,30 @@ export function RecentStack({
           // Same surface as the input shell; rows inside sit 8px in, so their radius is 28 − 8 = 20.
           className="mt-4 flex flex-col gap-0.5 rounded-shell border border-border bg-card p-2 shadow-[var(--shadow-rest)]"
         >
+          <label className="relative mb-1 flex items-center gap-2 rounded-xl border border-transparent bg-secondary/60 px-2.5 py-1.5 transition-[border-color,background-color] duration-150 focus-within:border-border focus-within:bg-card">
+            <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="sr-only">Search saved cards</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setVisibleCount(SAVED_PAGE_SIZE);
+              }}
+              placeholder="Search saved…"
+              autoComplete="off"
+              className="min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-foreground outline-none placeholder:text-muted-foreground"
+            />
+          </label>
+
+          {total > 0 && hasMore ? (
+            <p className="px-1 pb-0.5 text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
+              Showing {visible.length} of {total}
+            </p>
+          ) : null}
+
           <AnimatePresence initial={false}>
-            {items.map((item, i) => {
+            {visible.map((item, i) => {
               const def = registry[item.intent];
               const Icon = def.icon;
               return (
@@ -104,6 +139,26 @@ export function RecentStack({
               );
             })}
           </AnimatePresence>
+
+          {searching && total === 0 ? (
+            <p className="px-2 py-3 text-[13px] leading-5 text-muted-foreground">
+              No saved cards match.
+            </p>
+          ) : null}
+
+          {hasMore ? (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() =>
+                  setVisibleCount((n) => Math.min(n + SAVED_PAGE_SIZE, total))
+                }
+                className="inline-flex h-8 w-full cursor-pointer items-center justify-center rounded-xl border border-border bg-background px-2.5 text-[13px] font-medium text-foreground transition-[color,background-color,scale] duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.98]"
+              >
+                Load more
+              </button>
+            </div>
+          ) : null}
         </motion.section>
       )}
     </AnimatePresence>

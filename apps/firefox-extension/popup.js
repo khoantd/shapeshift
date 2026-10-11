@@ -1,4 +1,7 @@
+import { syntheticArticleContext } from "./lib/article.js";
 import { meanboxHref } from "./lib/config.js";
+import { resolveQuickGadget } from "./lib/gadgets.js";
+import { gadgetsPath, placesPath } from "./lib/paths.js";
 import { setStatus } from "./lib/ui.js";
 
 const statusEl = document.getElementById("status");
@@ -10,7 +13,7 @@ const actionsEl = document.getElementById("context-actions");
 const form = document.getElementById("search-form");
 const qInput = document.getElementById("search-q");
 
-/** @type {"github" | "youtube"} */
+/** @type {"github" | "youtube" | "gadgets" | "news" | "places"} */
 let searchTarget = "github";
 
 document.getElementById("btn-gh")?.addEventListener("click", () => {
@@ -19,6 +22,18 @@ document.getElementById("btn-gh")?.addEventListener("click", () => {
 });
 document.getElementById("btn-yt")?.addEventListener("click", () => {
   searchTarget = "youtube";
+  highlightTarget();
+});
+document.getElementById("btn-gadgets")?.addEventListener("click", () => {
+  searchTarget = "gadgets";
+  highlightTarget();
+});
+document.getElementById("btn-news")?.addEventListener("click", () => {
+  searchTarget = "news";
+  highlightTarget();
+});
+document.getElementById("btn-places")?.addEventListener("click", () => {
+  searchTarget = "places";
   highlightTarget();
 });
 document.getElementById("btn-sidebar")?.addEventListener("click", () => {
@@ -31,22 +46,69 @@ document.getElementById("btn-options")?.addEventListener("click", () => {
 form?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const q = qInput.value.trim();
-  if (q.length < 2) {
+  if (searchTarget !== "gadgets" && q.length < 2) {
     setStatus(statusEl, "Enter at least 2 characters", "error");
     return;
   }
-  const path =
-    searchTarget === "youtube"
-      ? `/youtube?q=${encodeURIComponent(q.slice(0, 200))}`
-      : `/github?q=${encodeURIComponent(q.slice(0, 100))}`;
+  if (searchTarget === "news") {
+    const ctx = syntheticArticleContext({ title: q, excerpt: q });
+    if (!ctx) {
+      setStatus(statusEl, "Enter a topic for deep dive", "error");
+      return;
+    }
+    await browser.runtime.sendMessage({
+      type: "open-article-deep-dive",
+      context: ctx,
+      autoRun: true,
+    });
+    window.close();
+    return;
+  }
+  let path;
+  if (searchTarget === "youtube") {
+    path = `/youtube?q=${encodeURIComponent(q.slice(0, 200))}`;
+  } else if (searchTarget === "gadgets") {
+    const quick = resolveQuickGadget(q);
+    if (quick) {
+      await browser.runtime.sendMessage({
+        type: "open-quick-gadget",
+        context: quick,
+      });
+      window.close();
+      return;
+    }
+    path = gadgetsPath(q);
+  } else if (searchTarget === "places") {
+    path = placesPath(q);
+  } else {
+    path = `/github?q=${encodeURIComponent(q.slice(0, 100))}`;
+  }
   const url = await meanboxHref(path);
   await browser.tabs.create({ url });
   window.close();
 });
 
 function highlightTarget() {
-  document.getElementById("btn-gh")?.classList.toggle("primary", searchTarget === "github");
-  document.getElementById("btn-yt")?.classList.toggle("primary", searchTarget === "youtube");
+  const map = {
+    github: "btn-gh",
+    youtube: "btn-yt",
+    gadgets: "btn-gadgets",
+    news: "btn-news",
+    places: "btn-places",
+  };
+  for (const [key, id] of Object.entries(map)) {
+    document.getElementById(id)?.classList.toggle("primary", searchTarget === key);
+  }
+  if (qInput) {
+    const placeholders = {
+      github: "Search GitHub…",
+      youtube: "Search YouTube…",
+      gadgets: "tip 18% · 25 min focus · rtcfc review PR…",
+      news: "Topic or headline for deep dive…",
+      places: "Place or address…",
+    };
+    qInput.placeholder = placeholders[searchTarget] || "Search Meanbox…";
+  }
 }
 
 async function loadContext() {
@@ -67,17 +129,23 @@ async function loadContext() {
     titleEl.textContent = ctx.fullName;
     metaEl.textContent = ctx.url;
     addAction("Open in Meanbox", `/github?repo=${encodeURIComponent(ctx.fullName)}`);
-    addAction("Open sidebar", null, () =>
-      browser.runtime.sendMessage({ type: "open-sidebar" }),
-    );
   } else if (ctx.kind === "youtube") {
     tagEl.textContent = "YouTube";
     searchTarget = "youtube";
     titleEl.textContent = `Video ${ctx.videoId}`;
     metaEl.textContent = ctx.url;
     addAction("Study in Meanbox", `/youtube?videoId=${encodeURIComponent(ctx.videoId)}`);
-    addAction("Open sidebar", null, () =>
-      browser.runtime.sendMessage({ type: "open-sidebar" }),
+  } else if (ctx.kind === "article") {
+    tagEl.textContent = ctx.variant === "lesson" ? "Lesson" : "Article";
+    searchTarget = "news";
+    titleEl.textContent = ctx.title || "Untitled";
+    metaEl.textContent = ctx.canonicalUrl || ctx.pageUrl || "";
+    addAction("Deep dive", null, () =>
+      browser.runtime.sendMessage({
+        type: "open-article-deep-dive",
+        context: ctx,
+        autoRun: true,
+      }),
     );
   }
   highlightTarget();
@@ -92,10 +160,11 @@ function addAction(label, path, onClick = null) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.textContent = label;
-  if (path) btn.classList.add("primary");
+  btn.classList.add("primary");
   btn.addEventListener("click", async () => {
     if (onClick) {
       onClick();
+      window.close();
       return;
     }
     if (!path) return;

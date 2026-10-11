@@ -1,11 +1,18 @@
 "use client";
 
-import { Check, Copy, Shuffle } from "lucide-react";
+import { Check, Copy, Loader2, Shuffle, Sparkles } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/button";
 import { spring, tween } from "../lib/motion";
-import { composeRtcfc, RTCFC_FIELDS, rollRtcfc, type RtcfcData, type RtcfcField } from "@shapeshift/core/parse/rtcfc";
+import {
+  composeRtcfc,
+  RTCFC_FIELDS,
+  rollRtcfc,
+  rtcfcSourceBody,
+  type RtcfcData,
+  type RtcfcField,
+} from "@shapeshift/core/parse/rtcfc";
 import { Field, Meta, Missing } from "./shared";
 import type { CardProps } from "./types";
 
@@ -29,24 +36,62 @@ function isEmpty(d: RtcfcData) {
   return RTCFC_FIELDS.every((k) => !d[k].trim());
 }
 
-export function RtcfcCard({ data, interactive, onApplyText }: CardProps<RtcfcData>) {
+export function RtcfcCard({
+  data,
+  interactive,
+  onApplyText,
+  sourceText = "",
+  structureRtcfc,
+}: CardProps<RtcfcData>) {
   const reduce = useReducedMotion();
   const [copied, setCopied] = useState(false);
   const [rolls, setRolls] = useState(0);
+  const [structuring, setStructuring] = useState(false);
+  const [structureError, setStructureError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const filled = RTCFC_FIELDS.filter((k) => data[k].trim()).length;
   const prompt = composeRtcfc(data);
   const canCopy = filled > 0 && interactive;
   const empty = isEmpty(data);
+  const body = rtcfcSourceBody(sourceText);
+  const canStructure = Boolean(interactive && structureRtcfc && onApplyText && body);
 
   useEffect(() => {
-    if (!interactive || !empty || !onApplyText) return;
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!interactive || !empty || !onApplyText || body) return;
     onApplyText(composeRtcfc(rollRtcfc()));
-  }, [interactive, empty, onApplyText]);
+  }, [interactive, empty, onApplyText, body]);
 
   function roll() {
     if (!interactive || !onApplyText) return;
     onApplyText(composeRtcfc(rollRtcfc(Math.random, data)));
     setRolls((n) => n + 1);
+    setStructureError(null);
+  }
+
+  async function structure() {
+    if (!canStructure || !structureRtcfc || !onApplyText) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setStructuring(true);
+    setStructureError(null);
+    try {
+      const next = await structureRtcfc(sourceText, ac.signal);
+      if (ac.signal.aborted) return;
+      onApplyText(composeRtcfc(next));
+      setRolls((n) => n + 1);
+    } catch (err) {
+      if (ac.signal.aborted) return;
+      setStructureError(err instanceof Error ? err.message : "Could not structure prompt");
+    } finally {
+      if (!ac.signal.aborted) setStructuring(false);
+    }
   }
 
   async function copy() {
@@ -62,7 +107,19 @@ export function RtcfcCard({ data, interactive, onApplyText }: CardProps<RtcfcDat
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-end gap-1.5">
+      <div className="flex flex-wrap justify-end gap-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={!canStructure || structuring}
+          onClick={structure}
+          className="gap-1.5 px-3.5"
+          aria-label={structuring ? "Structuring" : "Structure prompt"}
+        >
+          {structuring ? <Loader2 className="animate-spin" /> : <Sparkles />}
+          {structuring ? "Structuring…" : "Structure"}
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -79,7 +136,7 @@ export function RtcfcCard({ data, interactive, onApplyText }: CardProps<RtcfcDat
           type="button"
           size="sm"
           onClick={roll}
-          disabled={!interactive || !onApplyText}
+          disabled={!interactive || !onApplyText || structuring}
           className="gap-1.5 px-3.5"
           aria-label="Roll again"
         >
@@ -87,6 +144,11 @@ export function RtcfcCard({ data, interactive, onApplyText }: CardProps<RtcfcDat
           Roll again
         </Button>
       </div>
+      {structureError ? (
+        <p className="text-[13px] leading-5 text-destructive text-end" role="alert">
+          {structureError}
+        </p>
+      ) : null}
       <div className="flex flex-col gap-2" aria-live="polite">
         {RTCFC_FIELDS.map((key, i) => (
           <Field key={key} index={i} className="flex flex-col gap-0.5">

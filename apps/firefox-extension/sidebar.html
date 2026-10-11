@@ -16,8 +16,32 @@
       <p class="status" id="status" hidden></p>
 
       <section class="empty" id="empty-state">
-        <p class="empty-title">Nothing to show yet</p>
-        <p class="hint">Open a GitHub repository or YouTube video to use Meanbox here.</p>
+        <p class="empty-title">Meanbox tools</p>
+        <p class="hint">
+          Select a bill or duration on any page → right-click Gadgets, or start below.
+        </p>
+        <form class="launch-form" id="launch-form">
+          <label class="sr-only" for="launch-q">Compose or search</label>
+          <textarea
+            id="launch-q"
+            name="q"
+            rows="2"
+            placeholder="tip 18% on $90 · 25 min focus · rtcfc review this PR…"
+            autocomplete="off"
+          ></textarea>
+          <div class="row chips" role="group" aria-label="Quick gadgets">
+            <button type="button" class="chip" data-gadget="tip">Tip</button>
+            <button type="button" class="chip" data-gadget="split">Split</button>
+            <button type="button" class="chip" data-gadget="convert">Convert</button>
+            <button type="button" class="chip" data-gadget="timer">Timer</button>
+            <button type="button" class="chip" data-gadget="rtcfc">RTCFC</button>
+          </div>
+          <div class="row actions" role="group" aria-label="Meanbox tools">
+            <button type="submit" class="primary" data-launch="gadgets">Gadgets</button>
+            <button type="button" data-launch="news">Deep dive</button>
+            <button type="button" data-launch="places">Places</button>
+          </div>
+        </form>
       </section>
 
       <section class="card context-card" id="context-card" hidden>
@@ -28,7 +52,7 @@
           <div class="row" id="ctx-badges"></div>
         </div>
 
-        <div class="tabs" role="tablist" aria-label="Sidebar sections">
+        <div class="tabs" id="ctx-tabs" role="tablist" aria-label="Sidebar sections">
           <button
             type="button"
             class="tab is-active"
@@ -68,6 +92,7 @@
           <div id="overview-extra" hidden>
             <h3 class="section-label" id="overview-extra-label">Details</h3>
             <pre class="prose" id="overview-extra-body"></pre>
+            <ul class="list sources" id="overview-sources" hidden></ul>
           </div>
         </div>
 
@@ -82,7 +107,7 @@
           <ul class="list" id="related-list"></ul>
         </div>
 
-        <div class="card-footer">
+        <div class="card-footer" id="card-footer" hidden>
           <a
             class="btn footer-open"
             id="ctx-open"

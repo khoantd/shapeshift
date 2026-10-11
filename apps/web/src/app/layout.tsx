@@ -1,4 +1,7 @@
 import type { Metadata, Viewport } from "next";
+import { getLocale } from "next-intl/server";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -29,7 +32,22 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-/** Pass-through — document shell lives in `[locale]/layout.tsx`. */
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return children;
+/** Document shell — Next.js requires `<html>` / `<body>` in the root layout. */
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
+
+  return (
+    <html
+      lang={locale}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <body
+        className="min-h-full bg-background font-sans text-foreground"
+        suppressHydrationWarning
+      >
+        {children}
+      </body>
+    </html>
+  );
 }

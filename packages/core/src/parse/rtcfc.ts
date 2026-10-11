@@ -24,9 +24,35 @@ const LABEL_RE = /(?:\*\*)?(Role|Task|Context|Format|Constraints)(?:\*\*)?\s*:\s
 
 const empty = (): RtcfcData => ({ role: "", task: "", context: "", format: "", constraints: "" });
 
+/** Strip the bare `rtcfc` keyword; leftover is the freeform / labeled body. */
+export function rtcfcSourceBody(text: string): string {
+  return text.replace(/\brtcfc\b/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+/** True when the text already uses Role:/Task:/… labels. */
+export function hasRtcfcLabels(text: string): boolean {
+  LABEL_RE.lastIndex = 0;
+  return LABEL_RE.test(text);
+}
+
+/** Coerce unknown JSON into RtcfcData; null if all fields empty or not an object. */
+export function normalizeRtcfcFields(raw: unknown): RtcfcData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const data: RtcfcData = {
+    role: typeof o.role === "string" ? collapse(o.role) : "",
+    task: typeof o.task === "string" ? collapse(o.task) : "",
+    context: typeof o.context === "string" ? collapse(o.context) : "",
+    format: typeof o.format === "string" ? collapse(o.format) : "",
+    constraints: typeof o.constraints === "string" ? collapse(o.constraints) : "",
+  };
+  if (RTCFC_FIELDS.every((k) => !data[k])) return null;
+  return data;
+}
+
 export function parseRtcfc(text: string): RtcfcData {
   const data = empty();
-  const raw = text.replace(/\brtcfc\b/gi, " ").trim();
+  const raw = rtcfcSourceBody(text);
   if (!raw) return data;
 
   const matches = [...raw.matchAll(LABEL_RE)];

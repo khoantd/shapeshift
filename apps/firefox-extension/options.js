@@ -50,12 +50,17 @@ document.getElementById("grant")?.addEventListener("click", async () => {
     const settings = await getSettings();
     const origins = new Set(HOSTS);
     origins.add(`${new URL(settings.apiBase).origin}/*`);
+    // Optional broad hosts — needed to extract articles on news / e-learning sites.
+    origins.add("https://*/*");
+    origins.add("http://*/*");
     const ok = await browser.permissions.request({
       origins: [...origins],
     });
     setStatus(
       statusEl,
-      ok ? "Host access granted." : "Host access not fully granted.",
+      ok
+        ? "Host access granted (including open-web pages for deep dive)."
+        : "Host access not fully granted.",
       ok ? "ok" : "error",
     );
   } catch (e) {

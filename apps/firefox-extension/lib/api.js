@@ -209,3 +209,84 @@ export function generateLearningPack(body) {
 export function searchYouTube(q) {
   return meanboxFetch("/api/youtube/search", { query: { q } });
 }
+
+/**
+ * Upsert a clipped article into Meanbox news (Inspired Canvas) and return feed id.
+ * @param {{
+ *   title: string,
+ *   excerpt: string,
+ *   canonicalUrl?: string,
+ * }} body
+ */
+export function clipNewsArticle(body) {
+  const payload = {
+    title: String(body.title || "").trim().slice(0, 500),
+    excerpt: String(body.excerpt || "").trim().slice(0, 4000),
+  };
+  const canonicalUrl = String(body.canonicalUrl || "").trim().slice(0, 2000);
+  if (canonicalUrl) payload.canonicalUrl = canonicalUrl;
+  return meanboxFetch("/api/news/clip", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Generate a news/article deep dive. Pass `id` (from clipNewsArticle) to persist.
+ * @param {{
+ *   title: string,
+ *   excerpt: string,
+ *   canonicalUrl?: string,
+ *   id?: string,
+ *   language?: "en" | "vi",
+ *   force?: boolean,
+ * }} body
+ */
+export async function generateNewsDeepDive(body) {
+  const { locale } = await getSettings();
+  const language =
+    body.language === "en" || body.language === "vi"
+      ? body.language
+      : locale === "vi"
+        ? "vi"
+        : "en";
+  const payload = {
+    title: String(body.title || "").trim().slice(0, 500),
+    excerpt: String(body.excerpt || "").trim().slice(0, 4000),
+    language,
+  };
+  const canonicalUrl = String(body.canonicalUrl || "").trim().slice(0, 2000);
+  if (canonicalUrl) payload.canonicalUrl = canonicalUrl;
+  const id = String(body.id || "").trim().slice(0, 128);
+  if (id) payload.id = id;
+  if (body.force === true) payload.force = true;
+  return meanboxFetch("/api/news/deep-dive", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * AI-structure a freeform prompt into RTCFC fields.
+ * @param {{ text: string, force?: boolean }} body
+ * @returns {Promise<{
+ *   success: boolean,
+ *   data?: {
+ *     role?: string,
+ *     task?: string,
+ *     context?: string,
+ *     format?: string,
+ *     constraints?: string,
+ *   },
+ *   error?: string,
+ * }>}
+ */
+export async function structureRtcfc(body) {
+  const text = String(body?.text || "").trim().slice(0, 8000);
+  const payload = { text };
+  if (body?.force === true) payload.force = true;
+  return meanboxFetch("/api/rtcfc/structure", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

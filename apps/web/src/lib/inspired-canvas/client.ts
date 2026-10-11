@@ -896,6 +896,140 @@ export async function upsertCxoFeedItems(params: {
   return rows.length;
 }
 
+const BROWSER_CLIPS_DISPLAY = "Browser clips";
+const BROWSER_CLIPS_SITE = "https://meanbox.vercel.app/extension-clips";
+
+/**
+ * Resolve or create the Inspired Canvas source used for Firefox extension clips.
+ * Prefers `INSPIRED_CANVAS_CLIP_SOURCE_ID` when set.
+ */
+export async function ensureBrowserClipsSource(params: {
+  accessToken: string;
+}): Promise<string> {
+  const fromEnv = (process.env.INSPIRED_CANVAS_CLIP_SOURCE_ID ?? "").trim();
+  if (fromEnv) return fromEnv;
+
+  const token = params.accessToken.trim();
+  if (!token) {
+    throw new InspiredCanvasClientError("Missing Inspired Canvas access token", 401);
+  }
+
+  const sources = await listCxoFeedSources({ accessToken: token });
+  const existing = sources.find(
+    (s) => s.displayName.trim().toLowerCase() === BROWSER_CLIPS_DISPLAY.toLowerCase(),
+  );
+  if (existing?.id) return existing.id;
+
+  const userId = jwtSub(token);
+  if (!userId) {
+    throw new InspiredCanvasClientError("Inspired Canvas token missing user id", 401);
+  }
+
+  const supabase = createIcSupabase(token);
+  if (!supabase) {
+    throw new InspiredCanvasClientError("Inspired Canvas Supabase is not configured", 503);
+  }
+
+  let siteUrlNormalized = "meanbox.vercel.app";
+  try {
+    siteUrlNormalized = new URL(BROWSER_CLIPS_SITE).hostname
+      .replace(/^www\./i, "")
+      .toLowerCase();
+  } catch {
+    /* keep default */
+  }
+
+  const { data, error } = await supabase
+    .from(SOURCES_TABLE)
+    .insert({
+      user_id: userId,
+      display_name: BROWSER_CLIPS_DISPLAY,
+      site_url: BROWSER_CLIPS_SITE,
+      site_url_normalized: siteUrlNormalized,
+      feed_url: null,
+      enabled: true,
+      fetch_mode: "scrape",
+    })
+    .select("id")
+    .single();
+
+  if (error || !data?.id) {
+    // Race: another request may have created the source — re-list.
+    const again = await listCxoFeedSources({ accessToken: token });
+    const raced = again.find(
+      (s) => s.displayName.trim().toLowerCase() === BROWSER_CLIPS_DISPLAY.toLowerCase(),
+    );
+    if (raced?.id) return raced.id;
+    throw new InspiredCanvasClientError(
+      error?.message || "Could not create Browser clips source",
+      502,
+    );
+  }
+
+  return String(data.id);
+}
+
+/**
+ * Upsert a single clipped article and return its feed item id (for deep-dive persist + /news?story=).
+ */
+export async function upsertCxoFeedClipAndGetId(params: {
+  accessToken: string;
+  sourceId: string;
+  item: FetchedFeedItem;
+}): Promise<string> {
+  const token = params.accessToken.trim();
+  const sourceId = params.sourceId.trim();
+  if (!token || !sourceId) {
+    throw new InspiredCanvasClientError("Missing access token or source id", 400);
+  }
+
+  const userId = jwtSub(token);
+  if (!userId) {
+    throw new InspiredCanvasClientError("Inspired Canvas token missing user id", 401);
+  }
+
+  const supabase = createIcSupabase(token);
+  if (!supabase) {
+    throw new InspiredCanvasClientError("Inspired Canvas Supabase is not configured", 503);
+  }
+
+  const row = {
+    user_id: userId,
+    source_id: sourceId,
+    title: params.item.title,
+    excerpt: params.item.excerpt,
+    canonical_url: params.item.canonicalUrl,
+    published_at: params.item.publishedAtIso,
+    content_hash: params.item.contentHash,
+    ingest_method: params.item.ingestMethod,
+    thumbnail_url: params.item.thumbnailUrl?.trim() || null,
+  };
+
+  const { error: upsertError } = await supabase.from(ITEMS_TABLE).upsert(row, {
+    onConflict: "source_id,content_hash",
+  });
+
+  if (upsertError) {
+    throw new InspiredCanvasClientError(upsertError.message, 502);
+  }
+
+  const { data, error } = await supabase
+    .from(ITEMS_TABLE)
+    .select("id")
+    .eq("source_id", sourceId)
+    .eq("content_hash", params.item.contentHash)
+    .maybeSingle();
+
+  if (error || !data?.id) {
+    throw new InspiredCanvasClientError(
+      error?.message || "Clipped article not found after upsert",
+      502,
+    );
+  }
+
+  return String(data.id);
+}
+
 /** Update source fetch metadata after a pull. */
 export async function markCxoFeedSourceFetched(params: {
   accessToken: string;

@@ -46,11 +46,14 @@ function useSearchFlags() {
   return useMemo(() => {
     const p = new URLSearchParams(search);
     const g = p.get("g");
+    const q = (p.get("q") ?? "").trim().slice(0, 500);
     return {
       debug: p.get("debug") === "1",
       demo: p.get("demo") === "1",
       loop: p.get("loop") === "1",
       gadget: isCardIntent(g) ? g : null,
+      /** Free-text seed from extension / deep links (`/gadgets?q=…`). */
+      q: q || null,
     };
   }, [search]);
 }
@@ -84,10 +87,20 @@ function IntentCard<K extends CardIntent>(props: {
   editing: boolean;
   onConfirm: () => void;
   onApplyText?: (text: string) => void;
+  structureRtcfc?: import("../hooks/useStructurePrompt").StructureRtcfcFn;
+  structureBcmt?: import("../hooks/useStructurePrompt").StructureBcmtFn;
 }) {
-  const { intent, text, signals } = props;
+  const { intent, text, signals, structureRtcfc, structureBcmt } = props;
   const data = useMemo(() => parseFor(intent, text, { colorMood: signals.colorMood }), [intent, text, signals.colorMood]);
-  return <CardView {...props} data={data} />;
+  return (
+    <CardView
+      {...props}
+      data={data}
+      sourceText={text}
+      structureRtcfc={structureRtcfc}
+      structureBcmt={structureBcmt}
+    />
+  );
 }
 
 export type ShapeshiftProps = {
@@ -97,13 +110,23 @@ export type ShapeshiftProps = {
   brandSrc?: string;
   /** Show the curated gadget shelf under an empty shell (gadgets page). */
   showGadgetShelf?: boolean;
+  /** Host AI structurer for RTCFC freeform prompts. */
+  structureRtcfc?: import("../hooks/useStructurePrompt").StructureRtcfcFn;
+  /** Host AI structurer for BCMT freeform prompts. */
+  structureBcmt?: import("../hooks/useStructurePrompt").StructureBcmtFn;
 };
 
-export function Shapeshift({ classify, brandSrc, showGadgetShelf = false }: ShapeshiftProps = {}) {
+export function Shapeshift({
+  classify,
+  brandSrc,
+  showGadgetShelf = false,
+  structureRtcfc,
+  structureBcmt,
+}: ShapeshiftProps = {}) {
   const flags = useSearchFlags();
   const reduce = useReducedMotion();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const seededGadget = useRef(false);
+  const seededDeepLink = useRef(false);
 
   const [text, setText] = useState("");
   const { result, resultText, status, hud } = useIntent(text, { classify });
@@ -269,13 +292,29 @@ export function Shapeshift({ classify, brandSrc, showGadgetShelf = false }: Shap
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  // Deep-link seed: /gadgets?g=tip fills that gadget's example once on load.
+  // Deep-link seeds: /gadgets?q=… (free text) and/or ?g=tip (gadget example).
   useEffect(() => {
-    if (seededGadget.current) return;
-    if (!flags.gadget) return;
-    seededGadget.current = true;
-    openGadget(flags.gadget);
-  }, [flags.gadget, openGadget]);
+    if (seededDeepLink.current) return;
+    if (!flags.q && !flags.gadget) return;
+    seededDeepLink.current = true;
+    if (flags.q) {
+      const seed = flags.q;
+      setText(seed);
+      if (flags.gadget) {
+        setMem(force(flags.gadget, seed));
+        setGated(neutralGated);
+        if (showGadgetShelf) replaceGadgetQuery(flags.gadget);
+      }
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(seed.length, seed.length);
+      });
+      return;
+    }
+    if (flags.gadget) openGadget(flags.gadget);
+  }, [flags.q, flags.gadget, openGadget, showGadgetShelf]);
 
   /** RTCFC/BCMT sample roll writes the composed prompt into the shell. */
   const applyText = useCallback((t: string) => {
@@ -450,6 +489,8 @@ export function Shapeshift({ classify, brandSrc, showGadgetShelf = false }: Shap
                       editing={editingId !== null}
                       onConfirm={complete}
                       onApplyText={applyText}
+                      structureRtcfc={structureRtcfc}
+                      structureBcmt={structureBcmt}
                     />
                   </DraftContext>
                 </GhostPreview>

@@ -1,7 +1,13 @@
 "use client";
 
 import { mockClassifyAsync } from "@shapeshift/core";
-import { createFetchClassify, Shapeshift, type ClassifyFn } from "@shapeshift/react";
+import {
+  createFetchClassify,
+  createFetchStructureBcmt,
+  createFetchStructureRtcfc,
+  Shapeshift,
+  type ClassifyFn,
+} from "@shapeshift/react";
 import { useMemo } from "react";
 import { recordIntentResult } from "@/lib/intentStats";
 
@@ -24,11 +30,15 @@ export function ShapeshiftApp({ showGadgetShelf = false }: { showGadgetShelf?: b
       : createFetchClassify("/api/intent");
     return withIntentRecording(base);
   }, []);
+  const structureRtcfc = useMemo(() => createFetchStructureRtcfc("/api/rtcfc/structure"), []);
+  const structureBcmt = useMemo(() => createFetchStructureBcmt("/api/bcmt/structure"), []);
   return (
     <Shapeshift
       classify={classify}
       brandSrc="/brand/lockup.png"
       showGadgetShelf={showGadgetShelf}
+      structureRtcfc={structureRtcfc}
+      structureBcmt={structureBcmt}
     />
   );
 }

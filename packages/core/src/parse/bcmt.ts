@@ -93,6 +93,34 @@ function tidyField(s: string, collapseWs: boolean): string {
   return trimmed.replace(/^[.;]\s*/, "").replace(/\s*[.;]\s*$/, "");
 }
 
+/** Strip the bare `bcmt` keyword; leftover is the freeform / labeled body. */
+export function bcmtSourceBody(text: string): string {
+  return text.replace(/\bbcmt\b/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+/** True when the text already uses BCMT XML tags or labeled sections. */
+export function hasBcmtStructure(text: string): boolean {
+  TAG_RE.lastIndex = 0;
+  if (TAG_RE.test(text)) return true;
+  LABEL_RE.lastIndex = 0;
+  return LABEL_RE.test(text);
+}
+
+/** Coerce unknown JSON into BcmtData; null if all core fields empty or not an object. */
+export function normalizeBcmtFields(raw: unknown): BcmtData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const data: BcmtData = {
+    context: typeof o.context === "string" ? tidyField(o.context, true) : "",
+    people: typeof o.people === "string" ? tidyField(o.people, true) : "",
+    goal: typeof o.goal === "string" ? tidyField(o.goal, true) : "",
+    standards: typeof o.standards === "string" ? tidyField(o.standards, false) : "",
+    input: typeof o.input === "string" ? tidyField(o.input, false) : "",
+  };
+  if (BCMT_CORE.every((k) => !data[k].trim())) return null;
+  return data;
+}
+
 export function parseBcmt(text: string): BcmtData {
   const data = empty();
   const raw = text.replace(/\bbcmt\b/gi, " ").trim();

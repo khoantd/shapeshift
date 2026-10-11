@@ -80,8 +80,8 @@ Press `/` on `/gadgets` to browse all types. Each row is a card the input can be
 
 | Intent | Example |
 | --- | --- |
-| RTCFC | Role / Task / Context / Format / Constraints prompt builder |
-| BCMT | Business case / message template workflow |
+| RTCFC | Role / Task / Context / Format / Constraints prompt builder; **Structure** AI-fills fields from freeform text |
+| BCMT | Bối cảnh / Con người / Mục tiêu / Tiêu chuẩn prompt builder; **Structure** AI-fills fields from freeform text |
 | Triage | Ticket triage from title + report + service |
 | Classify | Document classification into categories |
 | Moderate | Policy-based content moderation flag |

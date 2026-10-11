@@ -9,6 +9,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import type { CardIntent } from "@shapeshift/core/jev/types";
+import type { StructureBcmtFn, StructureRtcfcFn } from "../hooks/useStructurePrompt";
 import { spring, tween } from "../lib/motion";
 import type { ParsedMap } from "@shapeshift/core/parse";
 import type { GatedSignals } from "@shapeshift/core/signals";
@@ -26,9 +27,25 @@ type Props<K extends CardIntent> = {
   interactive?: boolean;
   onConfirm: () => void;
   onApplyText?: (text: string) => void;
+  sourceText?: string;
+  structureRtcfc?: StructureRtcfcFn;
+  structureBcmt?: StructureBcmtFn;
 };
 
-export function CardView<K extends CardIntent>({ intent, data, signals, readiness, ghost, editing, interactive, onConfirm, onApplyText }: Props<K>) {
+export function CardView<K extends CardIntent>({
+  intent,
+  data,
+  signals,
+  readiness,
+  ghost,
+  editing,
+  interactive,
+  onConfirm,
+  onApplyText,
+  sourceText,
+  structureRtcfc,
+  structureBcmt,
+}: Props<K>) {
   const def = registry[intent];
   const reduce = useReducedMotion();
   const Icon = def.headerIcon?.(signals, data) ?? def.icon;
@@ -78,7 +95,15 @@ export function CardView<K extends CardIntent>({ intent, data, signals, readines
           exit={reduce ? { opacity: 0, transition: tween.exit } : { opacity: 0, scale: 0.98, filter: "blur(4px)", transition: tween.exit }}
           transition={reduce ? tween.fade : { ...spring.settle, delay: 0.04 }}
         >
-          <Body data={data} signals={signals} interactive={bodyInteractive} onApplyText={onApplyText} />
+          <Body
+            data={data}
+            signals={signals}
+            interactive={bodyInteractive}
+            onApplyText={onApplyText}
+            sourceText={sourceText}
+            structureRtcfc={structureRtcfc}
+            structureBcmt={structureBcmt}
+          />
         </motion.div>
       </AnimatePresence>
 

@@ -330,7 +330,15 @@ describe("goal", () => {
   test("no target", () => expect(parseGoal("learn piano").target).toBeNull());
 });
 
-import { composeRtcfc, parseRtcfc, rollRtcfc, RTCFC_SAMPLES } from "../parse/rtcfc";
+import {
+  composeRtcfc,
+  hasRtcfcLabels,
+  normalizeRtcfcFields,
+  parseRtcfc,
+  rollRtcfc,
+  rtcfcSourceBody,
+  RTCFC_SAMPLES,
+} from "../parse/rtcfc";
 
 describe("rtcfc", () => {
   test("one-liner marketing", () => {
@@ -396,9 +404,46 @@ describe("rtcfc", () => {
     const sample = RTCFC_SAMPLES[0]!;
     expect(parseRtcfc(composeRtcfc(sample))).toEqual(sample);
   });
+  test("rtcfcSourceBody strips keyword", () => {
+    expect(rtcfcSourceBody("rtcfc")).toBe("");
+    expect(rtcfcSourceBody("rtcfc write a PR review")).toBe("write a PR review");
+    expect(rtcfcSourceBody("  Write a blog  ")).toBe("Write a blog");
+  });
+  test("hasRtcfcLabels", () => {
+    expect(hasRtcfcLabels("write a blog")).toBe(false);
+    expect(hasRtcfcLabels("Role: engineer. Task: review")).toBe(true);
+  });
+  test("normalizeRtcfcFields", () => {
+    expect(normalizeRtcfcFields(null)).toBeNull();
+    expect(normalizeRtcfcFields({})).toBeNull();
+    expect(
+      normalizeRtcfcFields({
+        role: "  eng ",
+        task: "review",
+        context: "",
+        format: "bullets",
+        constraints: "no fluff",
+      }),
+    ).toEqual({
+      role: "eng",
+      task: "review",
+      context: "",
+      format: "bullets",
+      constraints: "no fluff",
+    });
+  });
 });
 
-import { BCMT_CORE, BCMT_SAMPLES, composeBcmt, parseBcmt, rollBcmt } from "../parse/bcmt";
+import {
+  BCMT_CORE,
+  BCMT_SAMPLES,
+  bcmtSourceBody,
+  composeBcmt,
+  hasBcmtStructure,
+  normalizeBcmtFields,
+  parseBcmt,
+  rollBcmt,
+} from "../parse/bcmt";
 
 describe("bcmt", () => {
   test("one-liner SME email sample", () => {
@@ -501,6 +546,34 @@ d
         input: "{ticket}",
       }),
     ).toContain("<đầu_vào>\n{ticket}\n</đầu_vào>");
+  });
+  test("bcmtSourceBody strips keyword", () => {
+    expect(bcmtSourceBody("bcmt")).toBe("");
+    expect(bcmtSourceBody("bcmt viết email kích hoạt")).toBe("viết email kích hoạt");
+  });
+  test("hasBcmtStructure", () => {
+    expect(hasBcmtStructure("viết email")).toBe(false);
+    expect(hasBcmtStructure("Context: SaaS. Goal: write email")).toBe(true);
+    expect(hasBcmtStructure("<bối_cảnh>\nx\n</bối_cảnh>")).toBe(true);
+  });
+  test("normalizeBcmtFields", () => {
+    expect(normalizeBcmtFields(null)).toBeNull();
+    expect(normalizeBcmtFields({ context: "", people: "", goal: "", standards: "" })).toBeNull();
+    expect(
+      normalizeBcmtFields({
+        context: " CRM ",
+        people: "CSM",
+        goal: "email",
+        standards: "≤120 từ",
+        input: "",
+      }),
+    ).toEqual({
+      context: "CRM",
+      people: "CSM",
+      goal: "email",
+      standards: "≤120 từ",
+      input: "",
+    });
   });
 });
 

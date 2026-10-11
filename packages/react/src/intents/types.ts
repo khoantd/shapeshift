@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import type { CardIntent, SignalKey } from "@shapeshift/core/jev/types";
 import type { ParsedMap } from "@shapeshift/core/parse";
 import type { GatedSignals } from "@shapeshift/core/signals";
+import type { StructureBcmtFn, StructureRtcfcFn } from "../hooks/useStructurePrompt";
 
 export type CardProps<D> = {
   data: D;
@@ -11,6 +12,12 @@ export type CardProps<D> = {
   interactive: boolean;
   /** Replace the shell textarea (e.g. RTCFC/BCMT sample roll). */
   onApplyText?: (text: string) => void;
+  /** Raw shell text (for Structure / auto-roll guards). */
+  sourceText?: string;
+  /** Host AI structurer for RTCFC freeform prompts. */
+  structureRtcfc?: StructureRtcfcFn;
+  /** Host AI structurer for BCMT freeform prompts. */
+  structureBcmt?: StructureBcmtFn;
 };
 
 export type BadgeSpec = { id: string; label: string; icon?: LucideIcon; tone?: "caution" | "brand" };
