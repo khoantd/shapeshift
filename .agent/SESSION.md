@@ -16,6 +16,7 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 
 ## Done
 
+- Learning pack upsert (one per user+video) + list dedupe; GET `learning-packs?videoId=`; web auto-restore Pack tab; extension `loadYouTube` shows Pack loaded
 - Firefox extension learning-pack → Convex save: `cookies` permission + `X-Meanbox-Cookie` bridge; BFF `oauthSessionCookies` merge; sidebar shows saved / saveError
 - Dual-mode `/github` search (prior)
 - Phase 1: diagram + explainer + Mermaid (+ Remotion video)
@@ -23,7 +24,7 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 - Prod env synced: `OPENAI_API_KEY`, `MINIO_*` (7 vars) on Vercel production
 - Remotion fix: build-time `.remotion` + Sandbox (no runtime `@remotion/bundler`)
 - Sandbox mkdir 400 fixed: empty `publicDir` + strip `.remotion/public`; pre-`mkDir("remotion-bundle")`
-- Vercel production deploy `dpl_CWK8garDN4AA1pYiwJfN4iCkhfDD` (READY) — aliased https://meanbox.vercel.app
+- Vercel production deploy `dpl_Gq35JBpASChbAoGKdkZLiq6NS6N2` (READY) — aliased https://meanbox.vercel.app (pack upsert + restore + cookie bridge)
 - Read-only GitHub repository security advisories: lib + `/api/github/advisories` (+ `[ghsaId]`) + Security section on repo detail summary
 - Firefox extension MVP under `apps/firefox-extension` — sidebar repo lens + YouTube study, popup search, omnibox `mb`, context menus, options (API base/locale), content chip; unit tests + `web-ext lint` clean
 - Sidebar UX cleanup (Mobbin): exclusive context card, Overview/Related tabs, sanitized related rows, ISO duration format, loadId race guard
@@ -34,10 +35,9 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 
 ## Next
 
-1. Reload temporary add-on (grants `cookies`) + deploy web BFF with `X-Meanbox-Cookie` bridge; smoke learning pack save while signed in on Meanbox
-2. Smoke `/github` advisories / video generate on production (prior)
-3. Push `main` when authorized; optional news explore WIP commit
-4. Phase 2 extension: gadgets sidebar, news clipper, places from selection
+1. Reload temporary add-on; smoke: open YouTube with existing pack → Pack loaded; regenerate → one Saved packs row; web deep-link auto-opens Pack tab
+2. Commit/push pack upsert + restore changes when authorized
+3. Phase 2 extension: gadgets sidebar, news clipper, places from selection
 
 ## Decisions
 
@@ -79,4 +79,4 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 | Remotion build-time bundle | `apps/web/scripts/bundle-remotion.mjs` → `.remotion/` |
 | Video render (Vercel Sandbox) | `apps/web/src/lib/github/repoVideoRender.ts` |
 | Production | https://meanbox.vercel.app |
-| Deploy inspect | https://vercel.com/royal-platform/shapeshift/CWK8garDN4AA1pYiwJfN4iCkhfDD |
+| Deploy inspect | https://vercel.com/royal-platform/shapeshift/Gq35JBpASChbAoGKdkZLiq6NS6N2 |

@@ -34,18 +34,50 @@ export function buildSessionCookieHeader(cookies) {
 /**
  * Read Meanbox session cookies for the configured API origin (httpOnly OK).
  * @param {string} apiBase
- * @returns {Promise<string>}
+ * @returns {Promise<{ header: string, reason: "ok" | "no_cookies_api" | "empty" | "error" }>}
  */
-async function sessionCookieHeaderFor(apiBase) {
+export async function getSessionCookieBridge(apiBase) {
   try {
     if (typeof browser === "undefined" || !browser.cookies?.getAll) {
-      return "";
+      return { header: "", reason: "no_cookies_api" };
     }
     const list = await browser.cookies.getAll({ url: `${apiBase}/` });
-    return buildSessionCookieHeader(list);
+    const header = buildSessionCookieHeader(list);
+    return { header, reason: header ? "ok" : "empty" };
   } catch {
-    return "";
+    return { header: "", reason: "error" };
   }
+}
+
+/**
+ * User-facing hint when a pack was generated but not persisted.
+ * @param {{
+ *   saveError?: string | null,
+ *   sessionBridge?: { header?: string, reason?: string } | null,
+ *   apiBase?: string,
+ * }} input
+ */
+export function formatUnsavedPackHint(input) {
+  const saveError =
+    typeof input?.saveError === "string" ? input.saveError.trim() : "";
+  if (saveError) return saveError;
+
+  const reason = input?.sessionBridge?.reason;
+  const apiBase =
+    typeof input?.apiBase === "string" && input.apiBase.trim()
+      ? input.apiBase.trim()
+      : "Meanbox";
+
+  if (reason === "no_cookies_api") {
+    return "Reload the add-on so the cookies permission is active, then regenerate.";
+  }
+  if (reason === "error") {
+    return `Cannot read session cookies for ${apiBase} — grant host access in Options, then regenerate.`;
+  }
+  if (reason === "empty" || !input?.sessionBridge?.header) {
+    return `No Meanbox session cookies for ${apiBase} — sign in on that origin, reload the add-on, grant host access, then regenerate.`;
+  }
+  return "Generated but not saved — sign in on Meanbox, then regenerate.";
 }
 
 /**
@@ -62,14 +94,14 @@ export async function meanboxFetch(path, init = {}) {
     }
   }
   const { query: _q, ...rest } = init;
-  const sessionCookie = await sessionCookieHeaderFor(apiBase);
+  const sessionBridge = await getSessionCookieBridge(apiBase);
   const res = await fetch(url.toString(), {
     ...rest,
     headers: {
       Accept: "application/json",
       ...(rest.body ? { "Content-Type": "application/json" } : {}),
-      ...(sessionCookie
-        ? { [MEANBOX_SESSION_COOKIE_HEADER]: sessionCookie }
+      ...(sessionBridge.header
+        ? { [MEANBOX_SESSION_COOKIE_HEADER]: sessionBridge.header }
         : {}),
       ...(rest.headers || {}),
     },
@@ -84,6 +116,10 @@ export async function meanboxFetch(path, init = {}) {
     err.status = res.status;
     err.data = data;
     throw err;
+  }
+  if (data && typeof data === "object") {
+    data._sessionBridge = sessionBridge;
+    data._apiBase = apiBase;
   }
   return data;
 }
@@ -123,6 +159,24 @@ export function searchGithub(q) {
 /** @param {string} videoId */
 export function fetchVideoDetails(videoId) {
   return meanboxFetch("/api/youtube/details", { query: { videoId } });
+}
+
+/**
+ * Load a saved learning pack for the signed-in Meanbox user (cookie bridge).
+ * @param {string} videoId
+ * @returns {Promise<{ success?: boolean, pack?: { markdown?: string } | null, unauthorized?: boolean }>}
+ */
+export async function fetchSavedLearningPack(videoId) {
+  try {
+    return await meanboxFetch("/api/youtube/learning-packs", {
+      query: { videoId },
+    });
+  } catch (err) {
+    if (err && err.status === 401) {
+      return { success: false, pack: null, unauthorized: true };
+    }
+    throw err;
+  }
 }
 
 /** @param {string} videoId */

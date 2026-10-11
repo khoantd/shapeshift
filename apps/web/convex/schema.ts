@@ -116,7 +116,11 @@ const schema = defineSchema({
       }),
     ),
     createdAt: v.number(),
-  }).index("by_googleSub_createdAt", ["googleSub", "createdAt"]),
+    /** Last upsert time; optional on older rows. */
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_googleSub_createdAt", ["googleSub", "createdAt"])
+    .index("by_googleSub_videoId", ["googleSub", "videoId"]),
 
   /**
    * Transcript summaries (VN/EN) for signed-in users on /youtube.

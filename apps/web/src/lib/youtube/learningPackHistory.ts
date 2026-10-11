@@ -218,6 +218,78 @@ export async function updateLearningPackGraphPayload(input: {
   }
 }
 
+function toHistoryItem(row: {
+  id: string;
+  videoId: string;
+  videoTitle: string;
+  channelTitle: string | null;
+  contentType?: string | null;
+  markdown: string;
+  transcript: string | null;
+  graphPayload: unknown;
+  createdAt: number;
+}): LearningPackHistoryItem {
+  return withStats({
+    id: String(row.id),
+    videoId: row.videoId,
+    videoTitle: row.videoTitle,
+    channelTitle: row.channelTitle,
+    contentType: row.contentType ?? null,
+    markdown: row.markdown,
+    transcript: row.transcript ?? null,
+    graphPayload: asGraphPayload(row.graphPayload),
+    createdAt: row.createdAt,
+  });
+}
+
+export async function getLearningPackByVideo(
+  googleSub: string,
+  videoId: string,
+): Promise<HistoryResult<LearningPackHistoryItem | null>> {
+  const c = client();
+  if (!c) {
+    return {
+      ok: false,
+      reason: "not_configured",
+      message: "History store is not configured (set NEXT_PUBLIC_CONVEX_URL)",
+    };
+  }
+  const id = videoId.trim();
+  if (!/^[\w-]{11}$/.test(id)) {
+    return { ok: true, data: null };
+  }
+  try {
+    const row = await c.query(api.youtubeLearningPacks.getByUserVideo, {
+      googleSub,
+      videoId: id,
+    });
+    if (!row) return { ok: true, data: null };
+    return {
+      ok: true,
+      data: toHistoryItem({
+        id: String(row.id),
+        videoId: row.videoId,
+        videoTitle: row.videoTitle,
+        channelTitle: row.channelTitle,
+        contentType: row.contentType ?? null,
+        markdown: row.markdown,
+        transcript: row.transcript ?? null,
+        graphPayload: row.graphPayload,
+        createdAt: row.createdAt,
+      }),
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[youtube-learning-packs] getByVideo failed: ${message}`);
+    return {
+      ok: false,
+      reason: "upstream",
+      message:
+        "Could not load pack. If you just updated this feature, run `npx convex dev` in apps/web.",
+    };
+  }
+}
+
 export async function listLearningPackHistory(
   googleSub: string,
   limit = 50,
@@ -238,7 +310,7 @@ export async function listLearningPackHistory(
     return {
       ok: true,
       data: rows.map((row) =>
-        withStats({
+        toHistoryItem({
           id: String(row.id),
           videoId: row.videoId,
           videoTitle: row.videoTitle,
@@ -246,7 +318,7 @@ export async function listLearningPackHistory(
           contentType: row.contentType ?? null,
           markdown: row.markdown,
           transcript: row.transcript ?? null,
-          graphPayload: asGraphPayload(row.graphPayload),
+          graphPayload: row.graphPayload,
           createdAt: row.createdAt,
         }),
       ),

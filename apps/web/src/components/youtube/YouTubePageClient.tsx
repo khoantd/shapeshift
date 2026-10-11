@@ -707,6 +707,24 @@ export function YouTubePageClient({
     }
   };
 
+  /** When history arrives (or video changes), open the newest saved pack for this video. */
+  useEffect(() => {
+    if (!selected?.videoId || packBusy || historyBusy) return;
+    const match = historyPacks.find((p) => p.videoId === selected.videoId);
+    if (!match) return;
+    if (activeHistoryId === match.id && packText) return;
+    openHistoryPack(match);
+    // openHistoryPack is stable enough for this restore; avoid depending on its identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional restore on video/history
+  }, [
+    selected?.videoId,
+    historyPacks,
+    packBusy,
+    historyBusy,
+    activeHistoryId,
+    packText,
+  ]);
+
   const focusSearch = useCallback(() => {
     setSearchPanelCollapsed(false);
     requestAnimationFrame(() => inputRef.current?.focus());

@@ -1,8 +1,10 @@
 import {
   fetchAdvisories,
   fetchRepo,
+  fetchSavedLearningPack,
   fetchTranscript,
   fetchVideoDetails,
+  formatUnsavedPackHint,
   generateLearningPack,
   searchGithub,
   searchYouTube,
@@ -253,7 +255,32 @@ async function loadYouTube(videoId, id) {
     `/youtube?videoId=${encodeURIComponent(videoCard.videoId || videoId)}`,
   );
 
+  overviewExtraEl.hidden = true;
+  setPlainText(overviewExtraBodyEl, "");
   setStatus(statusEl, "", "idle");
+
+  // Restore saved pack when the user already generated one for this video.
+  try {
+    const saved = await fetchSavedLearningPack(videoCard.videoId || videoId);
+    if (isStale(id)) return;
+    const md =
+      saved?.pack && typeof saved.pack.markdown === "string"
+        ? saved.pack.markdown.trim()
+        : "";
+    if (md) {
+      overviewExtraEl.hidden = false;
+      overviewExtraLabelEl.textContent = "Learning pack";
+      setPlainText(overviewExtraBodyEl, md);
+      setStatus(statusEl, "Pack loaded", "ok");
+    } else if (
+      saved?._sessionBridge?.reason === "ok" &&
+      !saved.unauthorized
+    ) {
+      setStatus(statusEl, "No saved pack yet", "idle");
+    }
+  } catch {
+    /* keep idle — generate still available */
+  }
 }
 
 async function runSummarize() {
@@ -345,9 +372,11 @@ async function runLearningPack() {
     return;
   }
 
-  const saveHint =
-    (typeof pack.saveError === "string" && pack.saveError.trim()) ||
-    "Generated but not saved — sign in on Meanbox, then regenerate.";
+  const saveHint = formatUnsavedPackHint({
+    saveError: pack.saveError,
+    sessionBridge: pack._sessionBridge,
+    apiBase: pack._apiBase,
+  });
   setStatus(statusEl, saveHint, "error");
   const openUrl = await meanboxHref(
     `/youtube?videoId=${encodeURIComponent(videoId)}`,

@@ -45,11 +45,13 @@ Firefox MV3 host permissions are opt-in. If the chip or sidebar cannot load data
 
 History is stored on Meanbox (Convex) and requires a **signed-in Google session** on the same API base (Options → API base).
 
-1. Open Meanbox in Firefox and **Sign in with Google** (YouTube study / account connect).
-2. Keep that origin’s cookies (the add-on reads `yt_oauth_*` via the `cookies` permission and sends them as `X-Meanbox-Cookie` to the BFF).
-3. Generate a learning pack from the sidebar — status should say **Pack saved to history**.
+1. **Redeploy / use a BFF that includes the `X-Meanbox-Cookie` bridge** (older production builds ignore the session header).
+2. Open Meanbox in Firefox and **Sign in with Google** (YouTube study / account connect) on that same origin.
+3. **Reload the temporary add-on** after upgrades so the `cookies` permission is active; use **Options → Grant host access** for the API host.
+4. Open a YouTube video that already has a pack — Overview should show **Pack loaded** without regenerating.
+5. Click **Learning pack** to generate or refresh — status **Pack saved to history** (one row per video after upsert).
 
-If you see “Generated but not saved”, sign in on Meanbox (same API base), then regenerate. Reload the temporary add-on after upgrading so the `cookies` permission is granted.
+If the status mentions **No Meanbox session cookies**, the add-on could not read `yt_oauth_*` for the configured API base (reload, host access, or sign-in origin mismatch). If it mentions **sign out and sign in again**, cookies reached the BFF but `googleSub` is missing.
 
 ## Lint / package
 
