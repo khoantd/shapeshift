@@ -9,12 +9,29 @@ import {
   getYouTubeAccessToken,
   fetchGoogleUserIdentity,
 } from "./oauth";
+import {
+  MEANBOX_SESSION_COOKIE_HEADER,
+  YT_COOKIE_ACCESS,
+  YT_COOKIE_EMAIL,
+  YT_COOKIE_EXPIRES,
+  YT_COOKIE_REFRESH,
+  YT_COOKIE_SUB,
+  mergeSessionFromCookiesAndBridge,
+  readSessionFromCookieStore,
+  sessionHasOAuthTokens,
+  type YouTubeOAuthCookieSession,
+} from "./oauthSessionCookies";
 
-export const YT_COOKIE_ACCESS = "yt_oauth_at";
-export const YT_COOKIE_REFRESH = "yt_oauth_rt";
-export const YT_COOKIE_EXPIRES = "yt_oauth_exp";
-export const YT_COOKIE_EMAIL = "yt_oauth_email";
-export const YT_COOKIE_SUB = "yt_oauth_sub";
+export {
+  MEANBOX_SESSION_COOKIE_HEADER,
+  YT_COOKIE_ACCESS,
+  YT_COOKIE_EMAIL,
+  YT_COOKIE_EXPIRES,
+  YT_COOKIE_REFRESH,
+  YT_COOKIE_SUB,
+  parseSessionCookieHeader,
+  readSessionFromCookieStore,
+} from "./oauthSessionCookies";
 
 const COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 30; // 30 days for refresh
 
@@ -40,28 +57,21 @@ export type YouTubeOAuthSession = {
   accessToken: string | null;
 };
 
-export function readSessionFromCookieStore(store: {
-  get: (name: string) => { value: string } | undefined;
-}): {
-  accessToken: string | null;
-  refreshToken: string | null;
-  expiresAtMs: number;
-  email: string | null;
-  sub: string | null;
-} {
-  const accessToken = store.get(YT_COOKIE_ACCESS)?.value?.trim() || null;
-  const refreshToken = store.get(YT_COOKIE_REFRESH)?.value?.trim() || null;
-  const expRaw = store.get(YT_COOKIE_EXPIRES)?.value?.trim() || "";
-  const expiresAtMs = Number(expRaw);
-  const email = store.get(YT_COOKIE_EMAIL)?.value?.trim() || null;
-  const sub = store.get(YT_COOKIE_SUB)?.value?.trim() || null;
-  return {
-    accessToken,
-    refreshToken,
-    expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : 0,
-    email,
-    sub,
-  };
+/**
+ * Session from request cookies, with optional Firefox extension bridge header.
+ */
+export function readSessionFromRequest(
+  request: NextRequest,
+): YouTubeOAuthCookieSession {
+  return mergeSessionFromCookiesAndBridge(
+    request.cookies,
+    request.headers.get(MEANBOX_SESSION_COOKIE_HEADER),
+  );
+}
+
+/** True when the request carries a user OAuth session (cookies or bridge header). */
+export function requestHasYouTubeOAuthSession(request: NextRequest): boolean {
+  return sessionHasOAuthTokens(readSessionFromRequest(request));
 }
 
 export function applyYouTubeOAuthCookies(
@@ -121,11 +131,8 @@ export async function resolveYouTubeAccessToken(opts?: {
     sub: string | null;
   };
 }> {
-  const cookieBag = opts?.request?.cookies;
-  const fromReq = cookieBag ? readSessionFromCookieStore(cookieBag) : null;
-
   // Prefer Next cookies() when no request (RSC)
-  let session = fromReq;
+  let session = opts?.request ? readSessionFromRequest(opts.request) : null;
   if (!session) {
     try {
       const jar = await cookies();
@@ -248,11 +255,10 @@ export async function ensureYouTubeOAuthIdentity(
   }
 
   const email = google.email ?? resolved.email;
-  const cookieBag = request?.cookies;
   let refreshToken: string | null = null;
   let expiresIn = 3600;
-  if (cookieBag) {
-    const session = readSessionFromCookieStore(cookieBag);
+  if (request) {
+    const session = readSessionFromRequest(request);
     refreshToken = session.refreshToken;
     const remainingSec = Math.floor((session.expiresAtMs - Date.now()) / 1000);
     expiresIn = Number.isFinite(remainingSec) && remainingSec > 60 ? remainingSec : 3600;

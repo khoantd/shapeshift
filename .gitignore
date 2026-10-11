@@ -9,6 +9,7 @@
 **/.next/
 /out/
 /build
+**/.remotion/
 **/coverage
 *.tsbuildinfo
 next-env.d.ts

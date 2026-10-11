@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meanbox Sidebar</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <h1>Meanbox</h1>
+        <button type="button" id="btn-refresh" class="btn">Refresh</button>
+      </div>
+
+      <p class="status" id="status" hidden></p>
+
+      <section class="empty" id="empty-state">
+        <p class="empty-title">Nothing to show yet</p>
+        <p class="hint">Open a GitHub repository or YouTube video to use Meanbox here.</p>
+      </section>
+
+      <section class="card context-card" id="context-card" hidden>
+        <div class="context-top">
+          <p class="eyebrow" id="ctx-eyebrow">Context</p>
+          <h2 class="context-title" id="ctx-title">—</h2>
+          <p class="meta" id="ctx-meta"></p>
+          <div class="row" id="ctx-badges"></div>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="Sidebar sections">
+          <button
+            type="button"
+            class="tab is-active"
+            role="tab"
+            id="tab-overview"
+            aria-selected="true"
+            aria-controls="panel-overview"
+            data-tab="overview"
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            class="tab"
+            role="tab"
+            id="tab-related"
+            aria-selected="false"
+            aria-controls="panel-related"
+            data-tab="related"
+          >
+            Related
+          </button>
+        </div>
+
+        <div
+          class="tab-panel"
+          id="panel-overview"
+          role="tabpanel"
+          aria-labelledby="tab-overview"
+        >
+          <div class="row actions" id="ctx-actions">
+            <button type="button" class="primary" id="btn-primary" hidden>
+              Primary
+            </button>
+            <button type="button" id="btn-secondary" hidden>Secondary</button>
+          </div>
+          <div id="overview-extra" hidden>
+            <h3 class="section-label" id="overview-extra-label">Details</h3>
+            <pre class="prose" id="overview-extra-body"></pre>
+          </div>
+        </div>
+
+        <div
+          class="tab-panel"
+          id="panel-related"
+          role="tabpanel"
+          aria-labelledby="tab-related"
+          hidden
+        >
+          <p class="section-caption" id="related-caption">No results yet</p>
+          <ul class="list" id="related-list"></ul>
+        </div>
+
+        <div class="card-footer">
+          <a
+            class="btn footer-open"
+            id="ctx-open"
+            href="#"
+            target="_blank"
+            rel="noreferrer"
+            >Open in Meanbox</a
+          >
+        </div>
+      </section>
+    </div>
+    <script type="module" src="sidebar.js"></script>
+  </body>
+</html>

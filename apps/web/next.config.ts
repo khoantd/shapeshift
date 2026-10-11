@@ -39,6 +39,8 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@shapeshift/core", "@shapeshift/react"],
   serverExternalPackages: [
     "remotion",
+    // bundler/renderer only used for local renders — kept external so Next
+    // does not try to webpack native binaries into the Function.
     "@remotion/bundler",
     "@remotion/renderer",
     "@remotion/vercel",
@@ -50,6 +52,8 @@ const nextConfig: NextConfig = {
     "@remotion/compositor-linux-arm64-gnu",
     "@remotion/compositor-linux-arm64-musl",
     "@remotion/compositor-win32-x64-msvc",
+    "@rspack/core",
+    "@rspack/binding",
     "openai",
     "@aws-sdk/client-s3",
     "@aws-sdk/s3-request-presigner",
@@ -61,7 +65,8 @@ const nextConfig: NextConfig = {
   },
   outputFileTracingIncludes: {
     "/*": ["./vendor/neo4j-arc/**/*"],
-    "/api/github/video": ["./src/remotion/**/*"],
+    // Prebuilt Remotion site for Sandbox renders (no runtime @remotion/bundler).
+    "/api/github/video": ["./src/remotion/**/*", "./.remotion/**/*"],
   },
   async redirects() {
     return [

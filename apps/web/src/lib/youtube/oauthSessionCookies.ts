@@ -1,0 +1,100 @@
+/**
+ * Pure helpers for Meanbox YouTube OAuth session cookies / Firefox bridge header.
+ * Kept free of `server-only` so unit tests can import without Next server mocks.
+ */
+
+export const YT_COOKIE_ACCESS = "yt_oauth_at";
+export const YT_COOKIE_REFRESH = "yt_oauth_rt";
+export const YT_COOKIE_EXPIRES = "yt_oauth_exp";
+export const YT_COOKIE_EMAIL = "yt_oauth_email";
+export const YT_COOKIE_SUB = "yt_oauth_sub";
+
+/**
+ * Firefox / other clients that cannot send SameSite=Lax cookies on cross-origin
+ * fetch may bridge session cookies via this header (Cookie-style, yt_oauth_* only).
+ */
+export const MEANBOX_SESSION_COOKIE_HEADER = "x-meanbox-cookie";
+
+const SESSION_COOKIE_PREFIX = "yt_oauth_";
+
+export type YouTubeOAuthCookieSession = {
+  accessToken: string | null;
+  refreshToken: string | null;
+  expiresAtMs: number;
+  email: string | null;
+  sub: string | null;
+};
+
+export type CookieReader = {
+  get: (name: string) => { value: string } | undefined;
+};
+
+export function readSessionFromCookieStore(
+  store: CookieReader,
+): YouTubeOAuthCookieSession {
+  const accessToken = store.get(YT_COOKIE_ACCESS)?.value?.trim() || null;
+  const refreshToken = store.get(YT_COOKIE_REFRESH)?.value?.trim() || null;
+  const expRaw = store.get(YT_COOKIE_EXPIRES)?.value?.trim() || "";
+  const expiresAtMs = Number(expRaw);
+  const email = store.get(YT_COOKIE_EMAIL)?.value?.trim() || null;
+  const sub = store.get(YT_COOKIE_SUB)?.value?.trim() || null;
+  return {
+    accessToken,
+    refreshToken,
+    expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : 0,
+    email,
+    sub,
+  };
+}
+
+/** Parse a Cookie-style header, keeping only Meanbox OAuth session cookies. */
+export function parseSessionCookieHeader(raw: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const part of raw.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    const name = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (!name.startsWith(SESSION_COOKIE_PREFIX) || !value) continue;
+    map.set(name, value);
+  }
+  return map;
+}
+
+function cookieStoreFromMap(map: Map<string, string>): CookieReader {
+  return {
+    get: (name: string) => {
+      const value = map.get(name);
+      return value !== undefined ? { value } : undefined;
+    },
+  };
+}
+
+/**
+ * Merge native request cookies with optional `X-Meanbox-Cookie` bridge header.
+ */
+export function mergeSessionFromCookiesAndBridge(
+  cookieStore: CookieReader,
+  bridgeHeader: string | null | undefined,
+): YouTubeOAuthCookieSession {
+  const fromCookies = readSessionFromCookieStore(cookieStore);
+  const bridgedRaw = bridgeHeader?.trim();
+  if (!bridgedRaw) return fromCookies;
+
+  const bridged = readSessionFromCookieStore(
+    cookieStoreFromMap(parseSessionCookieHeader(bridgedRaw)),
+  );
+
+  if (fromCookies.accessToken || fromCookies.refreshToken) {
+    return {
+      ...fromCookies,
+      email: fromCookies.email ?? bridged.email,
+      sub: fromCookies.sub ?? bridged.sub,
+    };
+  }
+  return bridged;
+}
+
+export function sessionHasOAuthTokens(session: YouTubeOAuthCookieSession): boolean {
+  return Boolean(session.accessToken || session.refreshToken);
+}

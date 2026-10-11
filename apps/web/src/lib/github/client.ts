@@ -39,11 +39,19 @@ import {
   type GithubRepoTree,
   type GithubTreeEntryRaw,
 } from "./repoTree";
+import {
+  ADVISORIES_PER_PAGE,
+  mapAdvisoryItem,
+  type AdvisoriesListQuery,
+  type GithubAdvisoryRaw,
+} from "./securityAdvisories";
 import type {
   GithubActivityResult,
+  GithubAdvisoriesResult,
   GithubNewsResult,
   GithubRepoCard,
   GithubSearchResult,
+  GithubSecurityAdvisory,
   GithubTrendingResult,
 } from "./types";
 
@@ -495,6 +503,145 @@ export async function fetchRepoTree(input: {
       apiTruncated: body.truncated === true,
     }),
   };
+}
+
+/**
+ * List repository security advisories (defaults to published).
+ */
+export async function fetchRepoSecurityAdvisories(input: {
+  repo: string;
+  query?: Partial<AdvisoriesListQuery>;
+  signal?: AbortSignal;
+}): Promise<
+  | { ok: true; data: GithubAdvisoriesResult }
+  | { ok: false; reason: "missing" | "upstream"; message: string }
+> {
+  const parsed = parseRepoFullName(input.repo);
+  if (!parsed.ok) {
+    return { ok: false, reason: "upstream", message: parsed.error };
+  }
+
+  const state = input.query?.state ?? "published";
+  const sort = input.query?.sort ?? "published";
+  const direction = input.query?.direction ?? "desc";
+  const perPage = input.query?.perPage ?? ADVISORIES_PER_PAGE;
+
+  const url = new URL(
+    `${GH_API}/repos/${parsed.owner}/${parsed.name}/security-advisories`,
+  );
+  url.searchParams.set("state", state);
+  url.searchParams.set("sort", sort);
+  url.searchParams.set("direction", direction);
+  url.searchParams.set("per_page", String(perPage));
+
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      headers: githubHeaders(),
+      signal: input.signal,
+      next: { revalidate: 600 },
+    });
+  } catch (e) {
+    if (input.signal?.aborted) throw e;
+    return {
+      ok: false,
+      reason: "upstream",
+      message: e instanceof Error ? e.message : "Advisories fetch failed",
+    };
+  }
+
+  if (res.status === 404) {
+    return {
+      ok: true,
+      data: {
+        repoFullName: parsed.fullName,
+        advisories: [],
+        fetchedAt: Date.now(),
+      },
+    };
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return {
+      ok: false,
+      reason: "upstream",
+      message: `GitHub advisories failed (${res.status})${text ? `: ${text.slice(0, 200)}` : ""}`,
+    };
+  }
+
+  const raw = (await res.json()) as unknown;
+  const list = Array.isArray(raw) ? (raw as GithubAdvisoryRaw[]) : [];
+  const advisories = list
+    .map(mapAdvisoryItem)
+    .filter((a): a is GithubSecurityAdvisory => Boolean(a));
+
+  return {
+    ok: true,
+    data: {
+      repoFullName: parsed.fullName,
+      advisories,
+      fetchedAt: Date.now(),
+    },
+  };
+}
+
+/**
+ * Get a single repository security advisory by GHSA id.
+ */
+export async function fetchRepoSecurityAdvisory(input: {
+  repo: string;
+  ghsaId: string;
+  signal?: AbortSignal;
+}): Promise<
+  | { ok: true; data: GithubSecurityAdvisory }
+  | { ok: false; reason: "missing" | "upstream"; message: string }
+> {
+  const parsed = parseRepoFullName(input.repo);
+  if (!parsed.ok) {
+    return { ok: false, reason: "upstream", message: parsed.error };
+  }
+
+  const ghsaId = input.ghsaId.trim();
+  const url = `${GH_API}/repos/${parsed.owner}/${parsed.name}/security-advisories/${encodeURIComponent(ghsaId)}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: githubHeaders(),
+      signal: input.signal,
+      next: { revalidate: 600 },
+    });
+  } catch (e) {
+    if (input.signal?.aborted) throw e;
+    return {
+      ok: false,
+      reason: "upstream",
+      message: e instanceof Error ? e.message : "Advisory fetch failed",
+    };
+  }
+
+  if (res.status === 404) {
+    return { ok: false, reason: "missing", message: "Security advisory not found" };
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return {
+      ok: false,
+      reason: "upstream",
+      message: `GitHub advisory failed (${res.status})${text ? `: ${text.slice(0, 200)}` : ""}`,
+    };
+  }
+
+  const raw = (await res.json()) as GithubAdvisoryRaw;
+  const mapped = mapAdvisoryItem(raw);
+  if (!mapped) {
+    return {
+      ok: false,
+      reason: "upstream",
+      message: "Could not map security advisory",
+    };
+  }
+  return { ok: true, data: mapped };
 }
 
 export async function fetchTopicHeadlines(input: {

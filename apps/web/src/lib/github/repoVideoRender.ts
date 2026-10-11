@@ -12,15 +12,19 @@ import {
 } from "@/remotion/constants";
 import type { RepoExplainerVideoProps } from "@/remotion/types";
 
-function remotionEntryPoint(): string {
+/** Prebuilt by `scripts/bundle-remotion.mjs` during `next build`. */
+function resolvePrebuiltBundleDir(): string {
   const candidates = [
-    path.join(process.cwd(), "src/remotion/index.ts"),
-    path.join(process.cwd(), "apps/web/src/remotion/index.ts"),
+    path.join(process.cwd(), ".remotion"),
+    path.join(process.cwd(), "apps/web/.remotion"),
   ];
   for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
+    if (existsSync(path.join(candidate, "index.html"))) return candidate;
   }
-  return candidates[0]!;
+  throw new RepoVideoRenderError(
+    "Prebuilt Remotion bundle missing (.remotion). Rebuild with bundle:remotion.",
+    500,
+  );
 }
 
 export class RepoVideoRenderError extends Error {
@@ -51,60 +55,39 @@ export function buildVideoInputProps(input: {
   };
 }
 
-async function renderLocal(input: {
-  inputProps: RepoExplainerVideoProps;
-  outPath: string;
-}): Promise<void> {
-  const { bundle } = await import("@remotion/bundler");
-  const { renderMedia, selectComposition } = await import("@remotion/renderer");
-
-  const bundleLocation = await bundle({
-    entryPoint: remotionEntryPoint(),
-    onProgress: () => undefined,
-  });
-
-  const composition = await selectComposition({
-    serveUrl: bundleLocation,
-    id: COMPOSITION_ID,
-    inputProps: input.inputProps,
-  });
-
-  const chrome =
-    process.env.REMOTION_CHROME_EXECUTABLE?.trim() ||
-    process.env.VIDEO_RENDER_CHROME_PATH?.trim() ||
-    undefined;
-
-  await renderMedia({
-    composition,
-    serveUrl: bundleLocation,
-    codec: "h264",
-    outputLocation: input.outPath,
-    inputProps: input.inputProps,
-    chromiumOptions: { gl: "angle" },
-    ...(chrome ? { browserExecutable: chrome } : {}),
-  });
-}
-
 async function renderOnVercelSandbox(input: {
   inputProps: RepoExplainerVideoProps;
   outPath: string;
 }): Promise<void> {
+  // Never import @remotion/bundler here — its native @rspack/binding is not
+  // available in the Vercel Function (Bun install layout). Use the build-time
+  // .remotion site and only render inside the Sandbox VM.
   const { createSandbox, addBundleToSandbox, renderMediaOnVercel } =
     await import("@remotion/vercel");
-  const { bundle } = await import("@remotion/bundler");
 
-  const bundleLocation = await bundle({
-    entryPoint: remotionEntryPoint(),
-    onProgress: () => undefined,
-  });
+  const bundleDir = resolvePrebuiltBundleDir();
 
   await using sandbox = await createSandbox({
     resources: { vcpus: 4 },
   });
 
+  const sandboxFs = sandbox as unknown as {
+    mkDir?: (dirPath: string) => Promise<unknown>;
+    readFileToBuffer?: (opts: { path: string }) => Promise<Buffer>;
+    readFile?: (opts: { path: string }) => Promise<Buffer | Uint8Array | string>;
+  };
+
+  // @remotion/vercel mkDirs nested paths like remotion-bundle/public without
+  // creating the remotion-bundle parent first — Vercel Sandbox returns 400.
+  // Ensure the root exists; keep the prebuilt bundle flat (no public/) so we
+  // usually never hit nested mkDir at all.
+  if (typeof sandboxFs.mkDir === "function") {
+    await sandboxFs.mkDir("remotion-bundle");
+  }
+
   await addBundleToSandbox({
     sandbox,
-    bundleDir: bundleLocation,
+    bundleDir,
   });
 
   const sandboxOut = "/tmp/repo-explainer.mp4";
@@ -117,15 +100,11 @@ async function renderOnVercelSandbox(input: {
   });
 
   const filePath = sandboxFilePath || sandboxOut;
-  const sandboxAny = sandbox as unknown as {
-    readFileToBuffer?: (opts: { path: string }) => Promise<Buffer>;
-    readFile?: (opts: { path: string }) => Promise<Buffer | Uint8Array | string>;
-  };
   let bytes: Buffer;
-  if (typeof sandboxAny.readFileToBuffer === "function") {
-    bytes = await sandboxAny.readFileToBuffer({ path: filePath });
-  } else if (typeof sandboxAny.readFile === "function") {
-    const raw = await sandboxAny.readFile({ path: filePath });
+  if (typeof sandboxFs.readFileToBuffer === "function") {
+    bytes = await sandboxFs.readFileToBuffer({ path: filePath });
+  } else if (typeof sandboxFs.readFile === "function") {
+    const raw = await sandboxFs.readFile({ path: filePath });
     bytes = Buffer.isBuffer(raw)
       ? raw
       : typeof raw === "string"
@@ -161,6 +140,7 @@ export async function renderRepoExplainerMp4(input: {
     if (process.env.VERCEL) {
       await renderOnVercelSandbox({ inputProps, outPath });
     } else {
+      const { renderLocal } = await import("./repoVideoRenderLocal");
       await renderLocal({ inputProps, outPath });
     }
     return await readFile(outPath);
@@ -173,4 +153,3 @@ export async function renderRepoExplainerMp4(input: {
     await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
-

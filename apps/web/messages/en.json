@@ -321,7 +321,16 @@
     "loadingRelatedNews": "Finding related news…",
     "noRelatedNews": "No related news found. Try Search on News.",
     "errorRelatedNews": "Could not load related news",
-    "relatedNewsUnavailable": "Related news needs Inspired Canvas credentials on the server."
+    "relatedNewsUnavailable": "Related news needs Inspired Canvas credentials on the server.",
+    "securityAdvisories": "Security advisories",
+    "loadingAdvisories": "Loading security advisories…",
+    "noAdvisories": "No published security advisories for this repository.",
+    "errorAdvisories": "Could not load security advisories",
+    "cveLabel": "CVE",
+    "severityCritical": "Critical",
+    "severityHigh": "High",
+    "severityMedium": "Medium",
+    "severityLow": "Low"
   },
   "Brief": {
     "urgent": "Urgent",

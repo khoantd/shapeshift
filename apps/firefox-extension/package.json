@@ -1,0 +1,15 @@
+{
+  "name": "@shapeshift/firefox-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Meanbox Firefox add-on (GitHub lens + YouTube study companion).",
+  "scripts": {
+    "dev": "bunx web-ext run --source-dir .",
+    "lint": "bunx web-ext lint --source-dir .",
+    "build": "bunx web-ext build --source-dir . --overwrite-dest",
+    "test": "bun test ./lib"
+  },
+  "devDependencies": {
+    "web-ext": "8.10.0"
+  }
+}

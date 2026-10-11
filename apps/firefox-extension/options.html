@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meanbox Options</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <h1>Meanbox options</h1>
+      </div>
+
+      <div class="field">
+        <label for="apiBase">API base URL</label>
+        <input
+          id="apiBase"
+          type="url"
+          placeholder="https://meanbox.vercel.app"
+          autocomplete="off"
+        />
+        <p class="hint">
+          Production default is <code>https://meanbox.vercel.app</code>. Use
+          <code>http://localhost:3000</code> while developing the web app.
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="locale">Locale (deep links)</label>
+        <select id="locale">
+          <option value="en">English (en)</option>
+          <option value="vi">Tiếng Việt (vi)</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <button type="button" class="primary" id="save">Save</button>
+        <button type="button" id="grant">Grant host access</button>
+      </div>
+      <p class="status" id="status" hidden></p>
+      <p class="hint">
+        Firefox asks you to allow host access per site. Grant Meanbox + GitHub +
+        YouTube when prompted so the sidebar can load data.
+      </p>
+    </div>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

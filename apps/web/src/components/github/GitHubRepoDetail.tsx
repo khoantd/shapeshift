@@ -16,7 +16,11 @@ import { MarkdownBody } from "@shapeshift/react";
 import { GITHUB_TOPIC_CATALOG } from "@/lib/github/topics";
 import { gitDiagramUrls } from "@/lib/github/repoUrl";
 import { videoPlaybackProxyPath } from "@/lib/github/repoVideoParse";
-import type { GithubRepoCard } from "@/lib/github/types";
+import type {
+  GithubAdvisorySeverity,
+  GithubRepoCard,
+  GithubSecurityAdvisory,
+} from "@/lib/github/types";
 import type { AppLocale } from "@/i18n/routing";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { RelatedNewsSection } from "@/components/shared/RelatedNewsSection";
@@ -74,6 +78,30 @@ type VideoState =
       /** Prior attempt may have uploaded chapter audio — Resume reuses it */
       resumable?: boolean;
     };
+
+type AdvisoriesState =
+  | { status: "loading" }
+  | { status: "ready"; advisories: GithubSecurityAdvisory[] }
+  | { status: "error"; message: string };
+
+function severityLabelKey(
+  severity: GithubAdvisorySeverity,
+):
+  | "severityCritical"
+  | "severityHigh"
+  | "severityMedium"
+  | "severityLow" {
+  switch (severity) {
+    case "critical":
+      return "severityCritical";
+    case "high":
+      return "severityHigh";
+    case "medium":
+      return "severityMedium";
+    case "low":
+      return "severityLow";
+  }
+}
 
 const summaryCache = new Map<string, string>();
 const diagramCache = new Map<
@@ -156,6 +184,9 @@ export function GitHubRepoDetail({
       : { status: "idle" };
   });
   const [treeOutline, setTreeOutline] = useState<string | null>(null);
+  const [advisories, setAdvisories] = useState<AdvisoriesState>({
+    status: "loading",
+  });
 
   const readmeMarkdownRef = useRef<string | null>(null);
   const tRef = useRef(t);
@@ -205,6 +236,7 @@ export function GitHubRepoDetail({
     setExplainerChapter(0);
     setTab("summary");
     setReadme({ status: "loading" });
+    setAdvisories({ status: "loading" });
     setTreeOutline(null);
     readmeMarkdownRef.current = null;
     diagramAbortRef.current?.abort();
@@ -214,13 +246,17 @@ export function GitHubRepoDetail({
     const ac = new AbortController();
     void (async () => {
       try {
-        const [readmeRes, treeRes] = await Promise.all([
+        const [readmeRes, treeRes, advisoriesRes] = await Promise.all([
           fetch(
             `/api/github/readme?repo=${encodeURIComponent(repo.fullName)}`,
             { signal: ac.signal },
           ),
           fetch(
             `/api/github/tree?repo=${encodeURIComponent(repo.fullName)}`,
+            { signal: ac.signal },
+          ),
+          fetch(
+            `/api/github/advisories?repo=${encodeURIComponent(repo.fullName)}`,
             { signal: ac.signal },
           ),
         ]);
@@ -260,12 +296,49 @@ export function GitHubRepoDetail({
         ) {
           setTreeOutline(treeBody.outline);
         }
+
+        try {
+          const advisoriesBody = (await advisoriesRes.json()) as {
+            success?: boolean;
+            advisories?: GithubSecurityAdvisory[];
+            error?: string;
+          };
+          if (ac.signal.aborted) return;
+          if (
+            !advisoriesRes.ok ||
+            !advisoriesBody.success ||
+            !Array.isArray(advisoriesBody.advisories)
+          ) {
+            setAdvisories({
+              status: "error",
+              message:
+                advisoriesBody.error || tRef.current("errorAdvisories"),
+            });
+          } else {
+            setAdvisories({
+              status: "ready",
+              advisories: advisoriesBody.advisories,
+            });
+          }
+        } catch {
+          if (!ac.signal.aborted) {
+            setAdvisories({
+              status: "error",
+              message: tRef.current("errorAdvisories"),
+            });
+          }
+        }
       } catch (e) {
         if (ac.signal.aborted) return;
         setReadme({
           status: "error",
           message:
             e instanceof Error ? e.message : tRef.current("errorReadme"),
+        });
+        setAdvisories({
+          status: "error",
+          message:
+            e instanceof Error ? e.message : tRef.current("errorAdvisories"),
         });
       }
     })();
@@ -737,6 +810,89 @@ export function GitHubRepoDetail({
                 {summary.text}
               </MarkdownBody>
             ) : null}
+
+            <div className="mt-4 flex flex-col gap-2 border-t border-border/70 pt-4">
+              <h3 className="text-[13px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t("securityAdvisories")}
+              </h3>
+              {advisories.status === "loading" ? (
+                <p className="inline-flex items-center gap-2 text-[13px] text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                  {t("loadingAdvisories")}
+                </p>
+              ) : null}
+              {advisories.status === "error" ? (
+                <p className="text-[13px] text-destructive" role="alert">
+                  {advisories.message}
+                </p>
+              ) : null}
+              {advisories.status === "ready" &&
+              advisories.advisories.length === 0 ? (
+                <p className="text-[13px] text-muted-foreground">
+                  {t("noAdvisories")}
+                </p>
+              ) : null}
+              {advisories.status === "ready" &&
+              advisories.advisories.length > 0 ? (
+                <ul className="flex flex-col gap-2">
+                  {advisories.advisories.map((a) => (
+                    <li key={a.ghsaId}>
+                      <a
+                        href={a.htmlUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex cursor-pointer flex-col gap-1 rounded-md border border-border/70 bg-background/70 px-2.5 py-2 transition-colors duration-150 hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      >
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          {a.severity ? (
+                            <span className="inline-flex h-5 items-center rounded-md border border-border bg-muted/50 px-1.5 text-[11px] font-medium text-foreground">
+                              {t(severityLabelKey(a.severity))}
+                            </span>
+                          ) : null}
+                          {a.cveId ? (
+                            <span className="text-[11px] text-muted-foreground">
+                              {t("cveLabel")}: {a.cveId}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">
+                              {a.ghsaId}
+                            </span>
+                          )}
+                        </span>
+                        <span className="inline-flex items-start gap-1.5 text-[13px] font-medium text-foreground">
+                          <span className="min-w-0 flex-1">{a.summary}</span>
+                          <ExternalLink
+                            className="mt-0.5 size-3 shrink-0 opacity-60"
+                            aria-hidden
+                          />
+                        </span>
+                        {a.publishedAt ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            {new Date(a.publishedAt).toLocaleDateString()}
+                          </span>
+                        ) : null}
+                        {a.vulnerabilities.length > 0 ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            {a.vulnerabilities
+                              .slice(0, 2)
+                              .map((v) => {
+                                const pkg =
+                                  [v.ecosystem, v.packageName]
+                                    .filter(Boolean)
+                                    .join(":") || null;
+                                const range = v.vulnerableVersionRange;
+                                return [pkg, range].filter(Boolean).join(" ");
+                              })
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        ) : null}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           </section>
         ) : null}
 

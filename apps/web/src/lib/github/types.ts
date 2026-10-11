@@ -78,3 +78,30 @@ export type GithubRepoReadme = {
   htmlUrl: string | null;
   fetchedAt: number;
 };
+
+export type GithubAdvisorySeverity = "critical" | "high" | "medium" | "low";
+
+export type GithubSecurityAdvisoryVulnerability = {
+  ecosystem: string | null;
+  packageName: string | null;
+  vulnerableVersionRange: string | null;
+  patchedVersions: string | null;
+};
+
+export type GithubSecurityAdvisory = {
+  ghsaId: string;
+  cveId: string | null;
+  htmlUrl: string;
+  summary: string;
+  severity: GithubAdvisorySeverity | null;
+  state: string;
+  publishedAt: string | null;
+  updatedAt: string | null;
+  vulnerabilities: GithubSecurityAdvisoryVulnerability[];
+};
+
+export type GithubAdvisoriesResult = {
+  repoFullName: string;
+  advisories: GithubSecurityAdvisory[];
+  fetchedAt: number;
+};

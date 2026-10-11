@@ -17,7 +17,7 @@
     "start": "bun run --filter @shapeshift/web start",
     "lint": "bun run --filter @shapeshift/web lint",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun test packages/core packages/react apps/web",
+    "test": "bun test packages/core packages/react apps/web apps/firefox-extension",
     "format": "prettier --write .",
     "check": "bun run typecheck && bun run lint && bun test"
   },

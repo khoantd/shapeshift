@@ -321,7 +321,16 @@
     "loadingRelatedNews": "Đang tìm tin liên quan…",
     "noRelatedNews": "Không tìm thấy tin liên quan. Thử Tìm trên Tin.",
     "errorRelatedNews": "Không tải được tin liên quan",
-    "relatedNewsUnavailable": "Tin liên quan cần cấu hình Inspired Canvas trên máy chủ."
+    "relatedNewsUnavailable": "Tin liên quan cần cấu hình Inspired Canvas trên máy chủ.",
+    "securityAdvisories": "Cảnh báo bảo mật",
+    "loadingAdvisories": "Đang tải cảnh báo bảo mật…",
+    "noAdvisories": "Không có cảnh báo bảo mật đã công bố cho kho mã này.",
+    "errorAdvisories": "Không tải được cảnh báo bảo mật",
+    "cveLabel": "CVE",
+    "severityCritical": "Nghiêm trọng",
+    "severityHigh": "Cao",
+    "severityMedium": "Trung bình",
+    "severityLow": "Thấp"
   },
   "Brief": {
     "urgent": "Khẩn cấp",

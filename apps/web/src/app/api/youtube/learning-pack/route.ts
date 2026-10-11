@@ -13,8 +13,7 @@ import { packToKnowledgeGraph } from "@/lib/youtube/packKnowledgeGraph";
 import {
   applyYouTubeOAuthCookies,
   ensureYouTubeOAuthIdentity,
-  YT_COOKIE_ACCESS,
-  YT_COOKIE_REFRESH,
+  requestHasYouTubeOAuthSession,
 } from "@/lib/youtube/oauthSession";
 
 export const runtime = "nodejs";
@@ -76,11 +75,7 @@ export async function POST(request: NextRequest) {
       } else {
         saveError = row.message;
       }
-    } else if (
-      ensured.cookiesToSet ||
-      request.cookies.get(YT_COOKIE_ACCESS) ||
-      request.cookies.get(YT_COOKIE_REFRESH)
-    ) {
+    } else if (ensured.cookiesToSet || requestHasYouTubeOAuthSession(request)) {
       // Session cookies present but googleSub could not be resolved.
       saveError =
         "Sign out and sign in again, then regenerate to save this pack to history.";
