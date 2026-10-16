@@ -126,3 +126,36 @@ export function buildSessionCookieHeaderFromSession(
 
 /** Deep link scheme target used by the Meanbox mobile auth session. */
 export const MOBILE_OAUTH_REDIRECT = "meanbox://oauth";
+
+/** `returnTo` path that mobile apps pass to `/api/youtube/oauth/start`. */
+export const MOBILE_OAUTH_RETURN_TO = "/api/youtube/oauth/mobile-bridge";
+
+export function isMobileOAuthReturnTo(returnTo: string): boolean {
+  const path = returnTo.trim().split("?")[0] ?? "";
+  return path === MOBILE_OAUTH_RETURN_TO;
+}
+
+/**
+ * Build `meanbox://oauth?bridge=…` (or `?error=…`) from a session.
+ * Prefer this from the OAuth callback so mobile does not depend on an HTTP
+ * hop that can lose cookies across domain aliases.
+ */
+export function buildMobileOAuthDeepLink(
+  session: YouTubeOAuthCookieSession,
+): string {
+  const dest = new URL(MOBILE_OAUTH_REDIRECT);
+  if (!sessionHasOAuthTokens(session)) {
+    dest.searchParams.set("error", "not_connected");
+    return dest.toString();
+  }
+  const bridge = buildSessionCookieHeaderFromSession(session);
+  if (!bridge) {
+    dest.searchParams.set("error", "empty_session");
+    return dest.toString();
+  }
+  dest.searchParams.set("bridge", bridge);
+  if (session.email) {
+    dest.searchParams.set("email", session.email);
+  }
+  return dest.toString();
+}

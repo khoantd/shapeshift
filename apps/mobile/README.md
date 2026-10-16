@@ -2,6 +2,8 @@
 
 Meanbox mobile app (Expo SDK 57 / React Native 0.86) + design tokens.
 
+**Flutter parallel:** a full-parity Flutter client lives at [`apps/mobile_flutter`](../mobile_flutter) (same BFF + OAuth bridge). This Expo app remains supported.
+
 | Artifact | Path |
 |----------|------|
 | Master DS | [`design-system/mobile/MASTER.md`](../../design-system/mobile/MASTER.md) |

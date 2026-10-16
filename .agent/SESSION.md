@@ -6,13 +6,13 @@
 
 | Field | Value |
 |-------|-------|
-| **Updated** | 2026-10-14 |
+| **Updated** | 2026-10-16 |
 | **Phase** | build |
 | **Tool** | cursor |
 
 ## Goal
 
-Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top of existing BFF APIs — plus Phase 2 tools, in-sidebar news/lesson deep dive, and Quick Gadgets. Web: RTCFC/BCMT Structure AI.
+Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top of existing BFF APIs — plus Phase 2 tools, in-sidebar news/lesson deep dive, and Quick Gadgets. Web: RTCFC/BCMT Structure AI. Parallel Flutter mobile at `apps/mobile_flutter` (Expo kept).
 
 ## Done
 
@@ -39,6 +39,31 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 ## In progress
 
 - None
+
+## Done (this session — mobile login fix)
+
+- Root cause: prod **404** on `/api/youtube/oauth/mobile-bridge` (undeployed) + Flutter used external Safari instead of auth session
+- BFF callback now deep-links to `meanbox://oauth?bridge=…` for mobile `returnTo` (no cookie hop)
+- Flutter Sign in → `flutter_web_auth_2` (Expo `openAuthSessionAsync` parity)
+- Deployed production `dpl_AizYzJMjyjXNAiugjxmxmu8tdUti` → https://meanbox.vercel.app (route list includes mobile-bridge)
+- Added `.vercelignore`; ignore Flutter ios `.symlinks`/Pods (broke prior archive deploys)
+
+## Done (this session — Flutter brand parity)
+
+- Flutter `MeanboxLogo` uses Expo brand PNGs (`assets/brand/{icon,wordmark,lockup}.png`) — lockup on Ask (h28) + More (h40)
+- App icons (iOS/Android) + adaptive FG from Expo 1024 / adaptive-icon; splash stone `#fafaf9` + mark
+- `flutter_launcher_icons` in pubspec; `flutter analyze` clean; 16 tests green
+
+## Done (this session — Flutter iOS device crash)
+
+- **EXC_BAD_ACCESS (code=50)** on KhoaDue’s iPhone during `flutter run` debug: Xcode 26.6 + Flutter 3.41.1 LLDB/JIT race ([flutter#184254](https://github.com/flutter/flutter/issues/184254)), not app Dart. Fixed in project via `apps/mobile_flutter/pubspec.yaml` → `flutter.config.enable-lldb-debugging: false` (Xcode attach fallback). README documents `--release` smoke + upgrade to Flutter **3.41.8+** to drop the workaround.
+
+## Done (this session — Flutter mobile)
+
+- **Parallel Flutter app** at `apps/mobile_flutter` (Expo `apps/mobile` unchanged)
+- Full tab parity: Ask / News (+ deep dive) / Study (+ pack + WebView player) / Tools (Dart gadgets + RTCFC structure) / More (API base, locale, OAuth `meanbox://`)
+- `flutter analyze` clean; **16 tests** green; `flutter build ios --no-codesign` OK
+- Tokens from `design-system/mobile/tokens.json`; MASTER.md + Expo README note Flutter twin
 
 ## Done (this session — iOS build)
 
@@ -68,17 +93,18 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 
 ## Next
 
-1. Smoke Expo mobile against production BFF (News list needs IC env; Study pack generate needs transcript)
-2. Optional: add `MB_More` frame in FigCraft and align More tab UI
-3. Smoke Firefox sidebar BrandSurface (light scrim + main.jpg) after reload temporary add-on
-4. Smoke Chrome load-unpacked — confirm sidebar BrandSurface matches Firefox
+1. Smoke Flutter app on device/simulator against production BFF (News IC env; Study transcript; OAuth bridge)
+2. Smoke Expo mobile against production BFF (same)
+3. Optional: add `MB_More` frame in FigCraft and align More tab UI (Expo + Flutter)
+4. Smoke Firefox / Chrome sidebar BrandSurface
 5. Upload AMO: `meanbox-1.3.8.zip` + `meanbox-1.3.8-source.zip`
 6. Deploy web BFF with IC env so `/api/news/clip` works in production
 7. Commit/push when authorized
 
 ## Decisions
 
-- Mobile DS extends existing Meanbox stone+teal tokens (reject ui-ux-pro-max clay/indigo); light-only v1; Expo/RN target; tokens: CSS → `tokens.json` → `theme/tokens.ts`
+- Mobile Flutter runs **in parallel** at `apps/mobile_flutter` (not replacing Expo); Riverpod + go_router; gadgets ported to Dart (no `@shapeshift/core` import)
+- Mobile DS extends existing Meanbox stone+teal tokens (reject ui-ux-pro-max clay/indigo); light-only v1; Expo/RN + Flutter; tokens: CSS → `tokens.json` → RN `theme/tokens.ts` / Flutter `lib/theme/tokens.dart`
 - RTCFC/BCMT Structure: explicit button only (not while typing); Perplexity `tools: []` (not Jev — no free-text extraction); apply via `compose*` into shell
 - Reuse existing `/api/youtube/search` and `/api/github/search` (no new bridge APIs)
 - News deep dive: sidebar `POST /api/news/clip` then `POST /api/news/deep-dive` with feed `id` (IC server env); Open in Meanbox → `/news?story=`
@@ -120,6 +146,8 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 |------|----------|
 | RTCFC / BCMT Structure BFF | `apps/web/src/lib/rtcfc/`, `apps/web/src/lib/bcmt/`, `apps/web/src/app/api/rtcfc/structure/`, `apps/web/src/app/api/bcmt/structure/` |
 | Structure fetchers + cards | `packages/react/src/hooks/useStructurePrompt.ts`, `RtcfcCard.tsx`, `BcmtCard.tsx` |
+| Flutter mobile (parallel) | `apps/mobile_flutter/` |
+| Expo mobile | `apps/mobile/` |
 | Firefox extension | `apps/firefox-extension/` |
 | Chrome extension | `apps/chrome-extension/` |
 | Chrome mistakes checklist | `apps/chrome-extension/MISTAKES.md` |

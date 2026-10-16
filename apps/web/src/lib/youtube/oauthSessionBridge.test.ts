@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   MEANBOX_SESSION_COOKIE_HEADER,
   MOBILE_OAUTH_REDIRECT,
+  MOBILE_OAUTH_RETURN_TO,
+  buildMobileOAuthDeepLink,
   buildSessionCookieHeaderFromSession,
+  isMobileOAuthReturnTo,
   mergeSessionFromCookiesAndBridge,
   parseSessionCookieHeader,
   sessionHasOAuthTokens,
@@ -83,5 +86,38 @@ describe("buildSessionCookieHeaderFromSession", () => {
     const map = parseSessionCookieHeader(header);
     expect(map.get("yt_oauth_sub")).toBe("sub1");
     expect(MOBILE_OAUTH_REDIRECT).toBe("meanbox://oauth");
+  });
+});
+
+describe("mobile OAuth deep link", () => {
+  it("recognizes the mobile returnTo path", () => {
+    expect(isMobileOAuthReturnTo(MOBILE_OAUTH_RETURN_TO)).toBe(true);
+    expect(isMobileOAuthReturnTo(`${MOBILE_OAUTH_RETURN_TO}?x=1`)).toBe(true);
+    expect(isMobileOAuthReturnTo("/youtube")).toBe(false);
+  });
+
+  it("builds meanbox://oauth with bridge + email", () => {
+    const link = buildMobileOAuthDeepLink({
+      accessToken: "at",
+      refreshToken: "rt",
+      expiresAtMs: 999,
+      email: "me@ex.com",
+      sub: "sub1",
+    });
+    expect(link.startsWith("meanbox://oauth?")).toBe(true);
+    const u = new URL(link);
+    expect(u.searchParams.get("bridge")).toContain("yt_oauth_at=at");
+    expect(u.searchParams.get("email")).toBe("me@ex.com");
+  });
+
+  it("sets error when session has no tokens", () => {
+    const link = buildMobileOAuthDeepLink({
+      accessToken: null,
+      refreshToken: null,
+      expiresAtMs: 0,
+      email: null,
+      sub: null,
+    });
+    expect(new URL(link).searchParams.get("error")).toBe("not_connected");
   });
 });

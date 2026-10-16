@@ -1,0 +1,15 @@
+# Vercel only builds apps/web — exclude native/mobile trees (broken iOS symlinks).
+apps/mobile_flutter/**
+apps/mobile/**
+apps/firefox-extension/**
+apps/chrome-extension/**
+node_modules/
+**/node_modules/
+.cursor/
+.claude/
+.agents/
+.codegraph/
+.git/
+**/.symlinks/**
+**/Pods/**
+**/Flutter/ephemeral/**

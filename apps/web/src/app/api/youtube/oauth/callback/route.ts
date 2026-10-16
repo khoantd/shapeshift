@@ -10,6 +10,10 @@ import {
   sanitizeReturnTo,
 } from "@/lib/youtube/oauth";
 import { applyYouTubeOAuthCookies } from "@/lib/youtube/oauthSession";
+import {
+  buildMobileOAuthDeepLink,
+  isMobileOAuthReturnTo,
+} from "@/lib/youtube/oauthSessionCookies";
 
 export const runtime = "nodejs";
 
@@ -108,26 +112,43 @@ export async function GET(request: NextRequest) {
   if (state.mode === "login") {
     const identity = await fetchGoogleUserIdentity(result.accessToken);
     const returnTo = sanitizeReturnTo(state.returnTo);
-    const dest = new URL(returnTo, url.origin);
-    dest.searchParams.set("oauth", "connected");
-    const res = NextResponse.redirect(dest.toString(), 302);
-    applyYouTubeOAuthCookies(res, {
+    const cookiePayload = {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
       email: identity.email,
       sub: identity.sub,
-    });
+    };
+
+    // Mobile: deep-link straight into the app with an X-Meanbox-Cookie bridge.
+    // Do not hop through /mobile-bridge HTTP (cookies can be lost across domain
+    // aliases; Expo/Flutter auth sessions expect meanbox://).
+    if (isMobileOAuthReturnTo(returnTo)) {
+      const expiresAtMs =
+        Date.now() + Math.max(0, Number(result.expiresIn) || 0) * 1000;
+      const deep = buildMobileOAuthDeepLink({
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresAtMs,
+        email: identity.email,
+        sub: identity.sub,
+      });
+      const mobile = NextResponse.redirect(deep, 302);
+      applyYouTubeOAuthCookies(mobile, cookiePayload);
+      return mobile;
+    }
+
+    const dest = new URL(returnTo, url.origin);
+    dest.searchParams.set("oauth", "connected");
+    const res = NextResponse.redirect(dest.toString(), 302);
+    applyYouTubeOAuthCookies(res, cookiePayload);
     if (!result.refreshToken) {
       // Still connected with access token only; warn via query
       dest.searchParams.set("oauth", "connected_no_refresh");
       const warn = NextResponse.redirect(dest.toString(), 302);
       applyYouTubeOAuthCookies(warn, {
-        accessToken: result.accessToken,
+        ...cookiePayload,
         refreshToken: null,
-        expiresIn: result.expiresIn,
-        email: identity.email,
-        sub: identity.sub,
       });
       return warn;
     }

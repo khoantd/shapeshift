@@ -6,10 +6,11 @@
 |-------|-------|
 | **Version** | 1.0.0 |
 | **Color scheme** | Light only (v1) |
-| **Stack target** | Expo / React Native |
+| **Stack target** | Expo / React Native **and** Flutter (parallel apps) |
 | **Canonical CSS** | [`packages/react/src/styles.css`](../../packages/react/src/styles.css) |
 | **Machine tokens** | [`tokens.json`](./tokens.json) |
 | **RN theme stub** | [`apps/mobile/theme`](../../apps/mobile/theme) |
+| **Flutter theme** | [`apps/mobile_flutter/lib/theme`](../../apps/mobile_flutter/lib/theme) |
 
 ---
 
