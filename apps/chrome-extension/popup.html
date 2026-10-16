@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meanbox</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <h1>Meanbox</h1>
+        <span class="tag" id="context-tag">Ready</span>
+      </div>
+
+      <form class="search-form" id="search-form">
+        <input
+          id="search-q"
+          type="text"
+          name="q"
+          placeholder="Search GitHub or YouTube…"
+          autocomplete="off"
+        />
+        <button type="submit" class="primary">Go</button>
+      </form>
+      <div class="row">
+        <button type="button" id="btn-gh" data-target="github">GitHub</button>
+        <button type="button" id="btn-yt" data-target="youtube">YouTube</button>
+        <button type="button" id="btn-gadgets" data-target="gadgets">Gadgets</button>
+        <button type="button" id="btn-news" data-target="news">Deep dive</button>
+        <button type="button" id="btn-places" data-target="places">Places</button>
+      </div>
+      <div class="row">
+        <button type="button" id="btn-sidebar">Sidebar</button>
+        <button type="button" id="btn-options">Options</button>
+      </div>
+
+      <div class="card" id="context-card" hidden>
+        <h2 id="context-title">Context</h2>
+        <p class="meta" id="context-meta"></p>
+        <div class="row" id="context-actions"></div>
+      </div>
+
+      <p class="status" id="status" hidden></p>
+      <p class="hint">
+        Tip: type <code>mb</code> in the address bar. Prefixes:
+        <code>yt:</code> <code>gh:</code> <code>g:</code> <code>news:</code>
+        <code>places:</code>.
+      </p>
+    </div>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

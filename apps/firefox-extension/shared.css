@@ -1,16 +1,20 @@
+/* Meanbox light tokens — aligned with packages/react/src/styles.css */
 :root {
-  --mb-bg: #0f1419;
-  --mb-surface: #1a222c;
-  --mb-border: #2a3542;
-  --mb-text: #e8eef4;
-  --mb-muted: #8b9aab;
-  --mb-accent: #3d9cf0;
-  --mb-accent-dim: #2563a8;
-  --mb-danger: #f07178;
-  --mb-ok: #7fd99a;
-  --mb-radius: 10px;
-  --mb-font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  --mb-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --mb-bg: #fafaf9;
+  --mb-surface: #ffffff;
+  --mb-border: #e8e7e4;
+  --mb-text: #1a1a19;
+  --mb-muted: #706e68;
+  --mb-accent: #0f766e;
+  --mb-accent-dim: #0d9488;
+  --mb-accent-soft: #ecfdf8;
+  --mb-danger: #e03131;
+  --mb-ok: #2f9e44;
+  --mb-radius: 12px;
+  --mb-font: "Geist", "Segoe UI", system-ui, sans-serif;
+  --mb-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --mb-shadow-rest: 0 1px 2px rgb(26 26 25 / 0.04), 0 1px 1px rgb(26 26 25 / 0.03);
+  color-scheme: light;
 }
 
 * {
@@ -31,10 +35,48 @@ body {
   line-height: 1.45;
   color: var(--mb-text);
   background: var(--mb-bg);
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   min-width: 320px;
+}
+
+/* BrandSurface tone=sidebar — same atmosphere as webapp BrandBackdrop */
+.brand-surface {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: color-mix(in srgb, var(--mb-bg) 50%, transparent);
+}
+
+.brand-backdrop {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.brand-backdrop-image {
+  position: absolute;
+  inset: 0;
+  background-image: url("brand/main.jpg");
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: left center;
+}
+
+/* medium scrub ≈ bg-background/70 */
+.brand-backdrop-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--mb-bg) 70%, transparent);
+}
+
+.brand-surface-content {
+  position: relative;
+  z-index: 1;
 }
 
 a {
@@ -95,8 +137,8 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 2px solid color-mix(in srgb, var(--mb-accent) 55%, transparent);
-  outline-offset: 1px;
+  outline: 2px solid var(--mb-accent);
+  outline-offset: 2px;
 }
 
 button,
@@ -119,12 +161,12 @@ button:hover,
 button.primary {
   background: var(--mb-accent);
   border-color: var(--mb-accent);
-  color: #041018;
+  color: #fafaf9;
   font-weight: 600;
 }
 
 button.primary:hover {
-  filter: brightness(1.05);
+  filter: brightness(1.06);
 }
 
 button:disabled {
@@ -184,12 +226,13 @@ button.chip {
   font-weight: 550;
   border-radius: 999px;
   color: var(--mb-muted);
-  background: transparent;
+  background: color-mix(in srgb, var(--mb-surface) 80%, transparent);
 }
 
 button.chip:hover {
   color: var(--mb-text);
   border-color: var(--mb-accent-dim);
+  background: var(--mb-accent-soft);
 }
 
 .gadget-clock {
@@ -231,12 +274,15 @@ button.chip:hover {
 
 .card {
   border: 1px solid var(--mb-border);
-  background: var(--mb-surface);
+  background: color-mix(in srgb, var(--mb-surface) 92%, transparent);
   border-radius: var(--mb-radius);
+  box-shadow: var(--mb-shadow-rest);
   padding: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .context-top {

@@ -1,0 +1,14 @@
+{
+  "name": "@shapeshift/chrome-extension",
+  "version": "1.3.8",
+  "private": true,
+  "description": "Meanbox Chrome extension (GitHub lens, YouTube study, saved news deep dive, Quick Gadgets incl. RTCFC, Places).",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "pack": "bash ./pack.sh",
+    "test": "bun test ./lib/api.test.js ./lib/article.test.js ./lib/config.test.js ./lib/gadgets.test.js ./lib/localHistory.test.js ./lib/parse.test.js ./lib/paths.test.js ./lib/ui.test.js"
+  }
+}

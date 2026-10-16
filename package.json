@@ -17,10 +17,18 @@
     "start": "bun run --filter @shapeshift/web start",
     "lint": "bun run --filter @shapeshift/web lint",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun test packages/core packages/react apps/web apps/firefox-extension",
+    "test": "bun test packages/core packages/react apps/web apps/firefox-extension apps/mobile",
     "format": "prettier --write .",
     "check": "bun run typecheck && bun run lint && bun test"
   },
   "trustedDependencies": ["sharp", "unrs-resolver"],
-  "workspaces": ["apps/*", "packages/*"]
+  "workspaces": ["apps/*", "packages/*"],
+  "overrides": {
+    "react-native": "0.86.3",
+    "@react-native/virtualized-lists": "0.86.3",
+    "@react-native/metro-config": "0.86.3",
+    "@react-native/js-polyfills": "0.86.3",
+    "@react-native/metro-babel-transformer": "0.86.3",
+    "@react-native/babel-preset": "0.86.3"
+  }
 }

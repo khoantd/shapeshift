@@ -38,6 +38,19 @@
         <button type="button" class="primary" id="save">Save</button>
         <button type="button" id="grant">Grant host access</button>
       </div>
+
+      <div class="field">
+        <p class="hint" id="localHistoryHint">
+          Device history: learning packs, summaries, deep dives, and gadgets are
+          stored in this browser when you are not signed in.
+        </p>
+        <div class="row">
+          <button type="button" id="syncLocal">Sync to Meanbox</button>
+          <button type="button" id="clearLocal">Clear device history</button>
+        </div>
+        <p class="hint" id="syncMeta" hidden></p>
+      </div>
+
       <p class="status" id="status" hidden></p>
       <p class="hint">
         Firefox asks you to allow host access per site. Grant Meanbox + GitHub +

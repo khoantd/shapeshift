@@ -81,6 +81,25 @@ export function formatUnsavedPackHint(input) {
 }
 
 /**
+ * @param {string} [apiBaseOverride]
+ * @returns {Promise<boolean>}
+ */
+export async function hasMeanboxSession(apiBaseOverride) {
+  const { apiBase } = await getSettings();
+  const base =
+    typeof apiBaseOverride === "string" && apiBaseOverride.trim()
+      ? apiBaseOverride.trim()
+      : apiBase;
+  const bridge = await getSessionCookieBridge(base);
+  return bridge.reason === "ok" && Boolean(bridge.header);
+}
+
+/** User-facing hint after content was stored in browser.storage.local. */
+export function formatLocalSaveHint() {
+  return "Saved on this device — sign in on Meanbox to sync to your account.";
+}
+
+/**
  * @param {string} path
  * @param {RequestInit & { query?: Record<string, string | number | undefined | null> }} [init]
  */
@@ -200,6 +219,27 @@ export function generateLearningPack(body) {
     body: JSON.stringify({
       contentType: "lecture",
       language: "en",
+      ...body,
+    }),
+  });
+}
+
+/**
+ * Import a generated pack to account history without re-running AI.
+ * @param {{
+ *   videoId: string,
+ *   title: string,
+ *   channelTitle?: string,
+ *   contentType?: string,
+ *   markdown: string,
+ *   transcript: string,
+ * }} body
+ */
+export function importLearningPack(body) {
+  return meanboxFetch("/api/youtube/learning-pack/import", {
+    method: "POST",
+    body: JSON.stringify({
+      contentType: "lecture",
       ...body,
     }),
   });

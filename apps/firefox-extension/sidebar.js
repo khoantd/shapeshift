@@ -1,4 +1,4 @@
-import { syntheticArticleContext } from "./lib/article.js";
+import { mergeArticleWithQuery } from "./lib/article.js";
 import {
   clipNewsArticle,
   fetchAdvisories,
@@ -6,15 +6,22 @@ import {
   fetchSavedLearningPack,
   fetchTranscript,
   fetchVideoDetails,
+  formatLocalSaveHint,
   formatUnsavedPackHint,
   generateLearningPack,
   generateNewsDeepDive,
+  hasMeanboxSession,
   searchGithub,
   searchYouTube,
   structureRtcfc,
   summarizeRepo,
 } from "./lib/api.js";
-import { meanboxHref } from "./lib/config.js";
+import { getSettings, meanboxHref } from "./lib/config.js";
+import {
+  getLocalItem,
+  markSynced,
+  saveLocalItem,
+} from "./lib/localHistory.js";
 import {
   composeRtcfc,
   exampleSeed,
@@ -63,6 +70,12 @@ const panelRelated = document.getElementById("panel-related");
 
 /** @type {number} */
 let loadId = 0;
+/**
+ * When > 0, ignore pageContext session.onChanged → load() so sidebar-owned
+ * writes (Deep dive refresh/clip, gadget roll) do not abort in-flight work.
+ * @type {number}
+ */
+let suppressPageContextReload = 0;
 /** @type {"github" | "youtube" | "article" | "gadget" | null} */
 let mode = null;
 /** @type {any} */
@@ -186,29 +199,33 @@ async function openQuickGadgetContext(context) {
 }
 
 /**
+ * Fresh-extract the active tab into article context (force main-body grab).
+ * @returns {Promise<any | null>}
+ */
+async function refreshArticleFromActiveTab() {
+  const res = await browser.runtime.sendMessage({
+    type: "extract-active-article",
+    force: true,
+  });
+  const ctx = res?.context;
+  if (!ctx || ctx.kind !== "article") return null;
+  activeContext = ctx;
+  await setPageContextLocal(ctx);
+  return ctx;
+}
+
+/**
  * Prefer active-tab article; else topic from launch box. Never opens Meanbox.
  * @param {string} q
  */
 async function launchNewsDeepDive(q) {
   setStatus(statusEl, "Preparing deep dive…", "loading");
-  const res = await browser.runtime.sendMessage({
-    type: "extract-active-article",
-    force: true,
-  });
-  let ctx = res?.context;
-  if (!ctx || ctx.kind !== "article") {
-    ctx = syntheticArticleContext({ title: q, excerpt: q });
-  } else if (q.length >= 2 && (!ctx.excerpt || ctx.confidence === "synthetic")) {
-    ctx = {
-      ...ctx,
-      title: ctx.title || q,
-      excerpt: q.length > (ctx.excerpt || "").length ? q : ctx.excerpt || q,
-    };
-  }
+  const extracted = await refreshArticleFromActiveTab();
+  const ctx = mergeArticleWithQuery(extracted, q);
   if (!ctx) {
     setStatus(
       statusEl,
-      "Enter a topic or open a news/lesson page (grant host access in Options).",
+      "Enter a topic or open a page (grant host access in Options).",
       "error",
     );
     return;
@@ -260,6 +277,7 @@ tabRelated?.addEventListener("click", () => setTab("related"));
 
 browser.storage.session.onChanged.addListener((changes) => {
   if (changes.pageContext) {
+    if (suppressPageContextReload > 0) return;
     load().catch(() => {});
     return;
   }
@@ -268,6 +286,22 @@ browser.storage.session.onChanged.addListener((changes) => {
     load().catch(() => {});
   }
 });
+
+/**
+ * Persist pageContext from the sidebar without re-entering load().
+ * Background tab sync still writes directly and refreshes the UI.
+ * @param {any} ctx
+ */
+async function setPageContextLocal(ctx) {
+  suppressPageContextReload += 1;
+  try {
+    await browser.storage.session.set({ pageContext: ctx });
+    // onChanged may run after the set promise resolves — stay suppressed one tick.
+    await new Promise((r) => setTimeout(r, 0));
+  } finally {
+    suppressPageContextReload = Math.max(0, suppressPageContextReload - 1);
+  }
+}
 
 /**
  * @param {"overview" | "related"} tab
@@ -351,6 +385,38 @@ function renderSources(sources) {
  */
 function isStale(id) {
   return id !== loadId;
+}
+
+/**
+ * @param {"learning_pack"|"repo_summary"|"news_deep_dive"|"gadget"} kind
+ * @param {string} dedupeKey
+ * @param {Record<string, unknown>} payload
+ */
+async function persistLocal(kind, dedupeKey, payload) {
+  const { apiBase } = await getSettings();
+  return saveLocalItem({ kind, dedupeKey, payload, apiBase });
+}
+
+/** @param {string} url */
+function articleDedupeKey(url) {
+  return String(url || "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * @param {any} ctx
+ */
+async function persistGadgetLocal(ctx) {
+  if (!ctx?.ready) return;
+  const intent = String(ctx.intent || "gadget");
+  const query = String(ctx.query || "").trim().toLowerCase();
+  await persistLocal("gadget", `${intent}:${query || intent}`, {
+    intent,
+    query: ctx.query || "",
+    lines: Array.isArray(ctx.lines) ? ctx.lines : [],
+    rtcfc: ctx.rtcfc || null,
+  });
 }
 
 async function load() {
@@ -448,6 +514,10 @@ async function loadGadget(ctx, id) {
     setStatus(statusEl, "Structuring RTCFC…", "loading");
     await runRtcfcStructure({ loadToken: id });
     return;
+  }
+
+  if (ctx.ready) {
+    await persistGadgetLocal(ctx);
   }
 
   setStatus(
@@ -549,7 +619,7 @@ function rollRtcfcGadget() {
   );
   next.query = composeRtcfc(next.rtcfc);
   activeContext = next;
-  browser.storage.session.set({ pageContext: next }).catch(() => {});
+  setPageContextLocal(next).catch(() => {});
   titleEl.textContent = next.title;
   metaEl.textContent = next.meta;
   overviewExtraLabelEl.textContent = "Prompt";
@@ -565,6 +635,7 @@ function rollRtcfcGadget() {
   meanboxHref(gadgetsPath(next.query)).then((href) => {
     if (openEl) openEl.href = href;
   });
+  persistGadgetLocal(next).catch(() => {});
   setStatus(statusEl, "Rolled a new RTCFC sample", "ok");
 }
 
@@ -608,7 +679,7 @@ async function runRtcfcStructure(opts = {}) {
     }
     next.query = composeRtcfc(next.rtcfc);
     activeContext = next;
-    await browser.storage.session.set({ pageContext: next });
+    await setPageContextLocal(next);
     if (isStale(id)) return;
     titleEl.textContent = next.title;
     metaEl.textContent = next.meta;
@@ -619,6 +690,7 @@ async function runRtcfcStructure(opts = {}) {
       btnPrimary.textContent = "Copy";
     }
     if (openEl) openEl.href = await meanboxHref(gadgetsPath(next.query));
+    await persistGadgetLocal(next);
     setStatus(statusEl, "RTCFC structured — Copy or open in Meanbox.", "ok");
   } catch (e) {
     if (isStale(id)) return;
@@ -732,6 +804,36 @@ async function loadArticle(ctx, id, autoRun) {
     cardFooterEl.hidden = false;
   }
 
+  const articleKey = articleDedupeKey(ctx.canonicalUrl || ctx.pageUrl);
+  if (articleKey) {
+    try {
+      const { apiBase } = await getSettings();
+      const local = await getLocalItem("news_deep_dive", articleKey, apiBase);
+      const text =
+        local?.payload && typeof local.payload.text === "string"
+          ? local.payload.text.trim()
+          : "";
+      if (text) {
+        if (isStale(id)) return;
+        overviewExtraEl.hidden = false;
+        overviewExtraLabelEl.textContent = "Deep dive";
+        setPlainText(overviewExtraBodyEl, text);
+        renderSources(local.payload.sources || []);
+        articleHasDeepDive = true;
+        btnPrimary.textContent = "Regenerate";
+        setStatus(statusEl, "Deep dive loaded from this device", "ok");
+        if (local.payload.storyId && openEl && cardFooterEl) {
+          openEl.href = await meanboxHref(
+            `/news?story=${encodeURIComponent(String(local.payload.storyId))}`,
+          );
+          cardFooterEl.hidden = false;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (autoRun) {
     await browser.storage.session.set({ pendingDeepDive: false });
     await runDeepDive({ force: false, loadToken: id });
@@ -742,17 +844,40 @@ async function loadArticle(ctx, id, autoRun) {
  * @param {{ force?: boolean, loadToken?: number }} [opts]
  */
 async function runDeepDive(opts = {}) {
-  if (!activeContext || activeContext.kind !== "article") return;
   const id = opts.loadToken ?? loadId;
-  setStatus(statusEl, "Saving article…", "loading");
+  if (btnPrimary) btnPrimary.disabled = true;
+  setStatus(statusEl, "Reading page…", "loading");
   setTab("overview");
 
-  const title = activeContext.title || "";
-  const excerpt = activeContext.excerpt || "";
-  const canonicalUrl =
-    activeContext.canonicalUrl || activeContext.pageUrl || "";
-
   try {
+    const refreshed = await refreshArticleFromActiveTab();
+    if (isStale(id)) return;
+    if (refreshed) {
+      if (mode !== "article" || !cardEl || cardEl.hidden) {
+        await loadArticle(refreshed, id, false);
+        if (isStale(id)) return;
+      } else {
+        activeContext = refreshed;
+        titleEl.textContent = refreshed.title || "Untitled";
+      }
+    }
+
+    if (!activeContext || activeContext.kind !== "article") {
+      setStatus(
+        statusEl,
+        "Could not read this page — grant host access in Options, or open an https page.",
+        "error",
+      );
+      return;
+    }
+
+    setStatus(statusEl, "Saving article…", "loading");
+
+    const title = activeContext.title || "";
+    const excerpt = activeContext.excerpt || "";
+    const canonicalUrl =
+      activeContext.canonicalUrl || activeContext.pageUrl || "";
+
     let storyId =
       typeof activeContext.storyId === "string" ? activeContext.storyId.trim() : "";
     let saveWarning = "";
@@ -765,7 +890,7 @@ async function runDeepDive(opts = {}) {
           throw new Error(clipped?.error || "Could not save article to Meanbox");
         }
         activeContext = { ...activeContext, storyId };
-        await browser.storage.session.set({ pageContext: activeContext });
+        await setPageContextLocal(activeContext);
       } catch (clipErr) {
         if (isStale(id)) return;
         const clipMsg = clipErr?.message || String(clipErr);
@@ -793,7 +918,23 @@ async function runDeepDive(opts = {}) {
     setPlainText(overviewExtraBodyEl, res.text || "");
     renderSources(res.sources || []);
     articleHasDeepDive = true;
-    btnPrimary.textContent = "Regenerate";
+    if (btnPrimary) btnPrimary.textContent = "Regenerate";
+
+    const articleKey = articleDedupeKey(canonicalUrl);
+    let localDeepDiveItem = null;
+    if (articleKey) {
+      localDeepDiveItem = await persistLocal("news_deep_dive", articleKey, {
+        canonicalUrl,
+        title,
+        excerpt,
+        text: res.text || "",
+        sources: res.sources || [],
+        storyId: storyId || "",
+      });
+      if (res.persisted && localDeepDiveItem?.id) {
+        await markSynced(localDeepDiveItem.id);
+      }
+    }
 
     if (storyId && openEl && cardFooterEl) {
       openEl.href = await meanboxHref(
@@ -803,19 +944,25 @@ async function runDeepDive(opts = {}) {
     }
 
     if (saveWarning) {
-      setStatus(statusEl, saveWarning, "error");
+      setStatus(
+        statusEl,
+        `${saveWarning} ${formatLocalSaveHint()}`,
+        "ok",
+      );
     } else if (res.persisted) {
       setStatus(
         statusEl,
         res.cached ? "Saved (cached) — open in Meanbox anytime" : "Saved to Meanbox",
         "ok",
       );
-    } else {
+    } else if (await hasMeanboxSession()) {
       setStatus(
         statusEl,
         "Deep dive ready, but not saved — check Inspired Canvas env on the API host.",
         "error",
       );
+    } else {
+      setStatus(statusEl, formatLocalSaveHint(), "ok");
     }
   } catch (e) {
     if (isStale(id)) return;
@@ -835,6 +982,8 @@ async function runDeepDive(opts = {}) {
         ? `${msg} — Options → Grant host access; API needs INSPIRED_CANVAS_* env.`
         : msg;
     setStatus(statusEl, hint, "error");
+  } finally {
+    if (btnPrimary) btnPrimary.disabled = false;
   }
 }
 
@@ -892,7 +1041,29 @@ async function loadGithub(fullName, id) {
   if (cardFooterEl) cardFooterEl.hidden = false;
   if (tabsEl) tabsEl.hidden = false;
 
-  setStatus(statusEl, "", "idle");
+  try {
+    const { apiBase } = await getSettings();
+    const local = await getLocalItem(
+      "repo_summary",
+      repoCard.fullName,
+      apiBase,
+    );
+    if (isStale(id)) return;
+    const text =
+      local?.payload && typeof local.payload.text === "string"
+        ? local.payload.text.trim()
+        : "";
+    if (text) {
+      overviewExtraEl.hidden = false;
+      overviewExtraLabelEl.textContent = "Summary";
+      setPlainText(overviewExtraBodyEl, text);
+      setStatus(statusEl, "Summary loaded from this device", "ok");
+    } else {
+      setStatus(statusEl, "", "idle");
+    }
+  } catch {
+    setStatus(statusEl, "", "idle");
+  }
 }
 
 /**
@@ -955,14 +1126,42 @@ async function loadYouTube(videoId, id) {
       overviewExtraLabelEl.textContent = "Learning pack";
       setPlainText(overviewExtraBodyEl, md);
       setStatus(statusEl, "Pack loaded", "ok");
-    } else if (
-      saved?._sessionBridge?.reason === "ok" &&
-      !saved.unauthorized
-    ) {
-      setStatus(statusEl, "No saved pack yet", "idle");
+    } else {
+      const { apiBase } = await getSettings();
+      const local = await getLocalItem("learning_pack", videoId, apiBase);
+      const localMd =
+        local?.payload && typeof local.payload.markdown === "string"
+          ? local.payload.markdown.trim()
+          : "";
+      if (localMd) {
+        overviewExtraEl.hidden = false;
+        overviewExtraLabelEl.textContent = "Learning pack";
+        setPlainText(overviewExtraBodyEl, localMd);
+        setStatus(statusEl, "Pack loaded from this device", "ok");
+      } else if (
+        saved?._sessionBridge?.reason === "ok" &&
+        !saved.unauthorized
+      ) {
+        setStatus(statusEl, "No saved pack yet", "idle");
+      }
     }
   } catch {
-    /* keep idle — generate still available */
+    try {
+      const { apiBase } = await getSettings();
+      const local = await getLocalItem("learning_pack", videoId, apiBase);
+      const localMd =
+        local?.payload && typeof local.payload.markdown === "string"
+          ? local.payload.markdown.trim()
+          : "";
+      if (localMd && !isStale(id)) {
+        overviewExtraEl.hidden = false;
+        overviewExtraLabelEl.textContent = "Learning pack";
+        setPlainText(overviewExtraBodyEl, localMd);
+        setStatus(statusEl, "Pack loaded from this device", "ok");
+      }
+    } catch {
+      /* keep idle — generate still available */
+    }
   }
 }
 
@@ -979,6 +1178,11 @@ async function runSummarize() {
   overviewExtraEl.hidden = false;
   overviewExtraLabelEl.textContent = "Summary";
   setPlainText(overviewExtraBodyEl, res.text || "");
+  await persistLocal("repo_summary", repoCard.fullName, {
+    fullName: repoCard.fullName,
+    text: res.text || "",
+    description: repoCard.description || "",
+  });
   setStatus(statusEl, res.cached ? "Summary ready (cached)" : "Summary ready", "ok");
 }
 
@@ -1046,7 +1250,17 @@ async function runLearningPack() {
   overviewExtraLabelEl.textContent = "Learning pack";
   setPlainText(overviewExtraBodyEl, pack.text || "");
 
+  const localItem = await persistLocal("learning_pack", videoId, {
+    videoId,
+    title,
+    channelTitle: videoCard?.channelTitle || "",
+    markdown: pack.text || "",
+    transcript: tr.text,
+    contentType: "lecture",
+  });
+
   if (pack.saved) {
+    if (localItem?.id) await markSynced(localItem.id);
     setStatus(
       statusEl,
       pack.cached ? "Pack saved (cached)" : "Pack saved to history",
@@ -1055,16 +1269,20 @@ async function runLearningPack() {
     return;
   }
 
-  const saveHint = formatUnsavedPackHint({
-    saveError: pack.saveError,
-    sessionBridge: pack._sessionBridge,
-    apiBase: pack._apiBase,
-  });
-  setStatus(statusEl, saveHint, "error");
-  const openUrl = await meanboxHref(
-    `/youtube?videoId=${encodeURIComponent(videoId)}`,
-  );
-  window.open(openUrl, "_blank");
+  if (pack.saveError) {
+    setStatus(
+      statusEl,
+      `${formatUnsavedPackHint({
+        saveError: pack.saveError,
+        sessionBridge: pack._sessionBridge,
+        apiBase: pack._apiBase,
+      })} ${formatLocalSaveHint()}`,
+      "ok",
+    );
+    return;
+  }
+
+  setStatus(statusEl, formatLocalSaveHint(), "ok");
 }
 
 async function runRelatedRepos() {

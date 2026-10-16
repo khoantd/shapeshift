@@ -1,0 +1,26 @@
+.meanbox-chip {
+  position: fixed;
+  z-index: 2147483646;
+  right: 16px;
+  bottom: 16px;
+  border: 1px solid #2a3542;
+  background: #0f1419;
+  color: #e8eef4;
+  font: 600 12px/1.2 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0.92;
+}
+
+.meanbox-chip:hover {
+  opacity: 1;
+  border-color: #3d9cf0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .meanbox-chip {
+    transition: opacity 120ms ease, border-color 120ms ease;
+  }
+}

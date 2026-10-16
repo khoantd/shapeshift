@@ -5,11 +5,14 @@
 import {
   analyzePageFields,
   buildArticlePageContext,
+  buildForcedArticleContext,
   gatherPageFieldsInTab,
   isExcludedArticleUrl,
   syntheticArticleContext,
 } from "./lib/article.js";
+import { SESSION_COOKIE_PREFIX } from "./lib/api.js";
 import { meanboxHref } from "./lib/config.js";
+import { syncPendingLocalHistory } from "./lib/syncLocalHistory.js";
 import { resolveQuickGadget } from "./lib/gadgets.js";
 import { parseGitHubRepoUrl, parsePageContext, parseYouTubeVideoUrl } from "./lib/parse.js";
 import { gadgetsPath, placesPath, resolveOmniboxPath } from "./lib/paths.js";
@@ -32,7 +35,25 @@ let lastContext = null;
 
 browser.runtime.onInstalled.addListener(() => {
   setupMenus();
+  syncPendingLocalHistory().catch(() => {});
 });
+
+if (browser.runtime.onStartup) {
+  browser.runtime.onStartup.addListener(() => {
+    syncPendingLocalHistory().catch(() => {});
+  });
+}
+
+syncPendingLocalHistory().catch(() => {});
+
+if (browser.cookies?.onChanged) {
+  browser.cookies.onChanged.addListener((changeInfo) => {
+    if (changeInfo.removed) return;
+    const name = changeInfo.cookie?.name || "";
+    if (!name.startsWith(SESSION_COOKIE_PREFIX)) return;
+    syncPendingLocalHistory().catch(() => {});
+  });
+}
 
 setupMenus();
 
@@ -71,6 +92,10 @@ browser.runtime.onMessage.addListener((msg, sender) => {
     return meanboxHref(msg.path || "/").then((url) =>
       browser.tabs.create({ url }).then(() => ({ ok: true })),
     );
+  }
+
+  if (msg.type === "sync-local-history") {
+    return syncPendingLocalHistory();
   }
 
   if (msg.type === "open-sidebar") {
@@ -394,16 +419,25 @@ async function extractArticleFromTab(tab, opts = {}) {
     if (analyzed) return buildArticlePageContext(analyzed);
 
     if (opts.force) {
-      return syntheticArticleContext({
-        title: fields.title || (tab?.title || "").trim() || pageUrl,
-        excerpt:
-          selection ||
-          fields.ogDescription ||
-          fields.metaDescription ||
-          fields.title ||
-          pageUrl,
-        canonicalUrl: fields.canonical || pageUrl,
-      });
+      return (
+        buildForcedArticleContext({
+          ...fields,
+          pageUrl: fields.pageUrl || pageUrl,
+          title: fields.title || (tab?.title || "").trim() || pageUrl,
+          selection: selection || fields.selection || "",
+        }) ||
+        syntheticArticleContext({
+          title: fields.title || (tab?.title || "").trim() || pageUrl,
+          excerpt:
+            selection ||
+            fields.mainText ||
+            fields.ogDescription ||
+            fields.metaDescription ||
+            fields.title ||
+            pageUrl,
+          canonicalUrl: fields.canonical || pageUrl,
+        })
+      );
     }
     return null;
   } catch {

@@ -1,0 +1,55 @@
+{
+  "name": "@shapeshift/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Meanbox mobile app (Expo). Theme tokens map design-system/mobile; screens follow FigCraft mockups.",
+  "exports": {
+    ".": "./theme/index.ts",
+    "./theme": "./theme/index.ts",
+    "./theme/*": "./theme/*"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test ./lib ./theme"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@expo/ngrok": "^4.1.0",
+    "@react-native/babel-plugin-codegen": "0.86.3",
+    "@react-native/babel-preset": "0.86.3",
+    "@types/bun": "^1.4.2",
+    "@types/react": "~19.2.0",
+    "babel-preset-expo": "~57.0.15",
+    "typescript": "~6.0.3"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~57.0.16",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@shapeshift/core": "workspace:*",
+    "expo": "~57.0.0",
+    "expo-clipboard": "~57.0.2",
+    "expo-constants": "~57.0.21",
+    "expo-dev-client": "~57.0.20",
+    "expo-font": "~57.0.4",
+    "expo-linking": "~57.0.12",
+    "expo-router": "~57.0.26",
+    "expo-status-bar": "~57.0.1",
+    "expo-system-ui": "~57.0.4",
+    "expo-web-browser": "~57.0.3",
+    "lucide-react-native": "^0.544.0",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
+    "react-native-webview": "13.16.1",
+    "react-native-worklets": "0.10.1",
+    "whatwg-fetch": "^3.6.20"
+  },
+  "main": "expo-router/entry"
+}

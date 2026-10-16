@@ -6,7 +6,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Updated** | 2026-10-11 |
+| **Updated** | 2026-10-14 |
 | **Phase** | build |
 | **Tool** | cursor |
 
@@ -40,26 +40,51 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 
 - None
 
+## Done (this session — mobile BFF)
+
+- **Mobile BFF wiring:** `lib/api` + settings (AsyncStorage) + SettingsProvider; News feed/`deep-dive` stack; Study search → pack generate; Ask `/api/intent` routing + local recent; Tools gadgets via core parsers + RTCFC structure; More API base/locale + OAuth browser; 24 unit tests + typecheck green
+- **Expo SDK 57:** `@shapeshift/mobile` → `expo@~57.0.0` (57.0.28) + RN 0.86.3 / React 19.2.3; root RN overrides updated; tab icon ColorValue fix; tests + typecheck green
+
+## Done (this session)
+
+- **Mobile design system:** `design-system/mobile/MASTER.md` + `tokens.json` (extends web CSS, not clay/indigo); `@shapeshift/mobile` theme stub (`MeanboxThemeProvider`, tokens, 3 sync tests); root `test` includes `apps/mobile`
+- **Firefox sidebar BrandSurface:** `brand/main.jpg` + light scrim (medium) + light Meanbox tokens in `shared.css`; `sidebar.html` wraps content like webapp `BrandSurface` tone=sidebar; packed **v1.3.8** (`meanbox-1.3.8.zip` + `-source.zip`, web-ext lint clean)
+- **Chrome sidebar BrandSurface parity:** same backdrop markup + light tokens + translucent cards/chips; `brand/main.jpg` copied; `pack.sh` includes `brand/`; packed **v1.3.8** (`dist/meanbox-1.3.8.zip`)
+
+- **News Summary prose:** `splitProseParagraphs` + paragraph UI in `NewsReaderPane` / `NewsDetailCard` (relaxed leading, stronger contrast); 7 unit tests green
+- **Deep dive page grab:** on Deep dive click, always `extract-active-article` with `force: true`; `gatherPageFieldsInTab` collects `mainText` (article/main/role=main/fallbacks); `buildForcedArticleContext` + `mergeArticleWithQuery`; sidebar `runDeepDive` refreshes before clip; popup news prefers active tab; 75 ext tests + web-ext lint clean
+- **Deep dive silent abort fix:** sidebar `setPageContextLocal` suppresses `session.onChanged` → `load()` so refresh/clip writes no longer bump `loadId` and abort `runDeepDive`; button disabled while running; shipped as **v1.3.6** (`meanbox-1.3.6.zip` + `-source.zip`)
+- **Related-news strip:** `collectMainText` / `articleText` clone + strip chrome/related widgets (`box-category`, `related`, `tin-lien-quan`, …) before excerpt; `looksLikeArticleNoise` + `extractCleanTextFromHtml` + regression fixture; 21 article tests green
+- **v1.3.7 packed:** `web-ext-artifacts/meanbox-1.3.7.zip` + `meanbox-1.3.7-source.zip`; `web-ext lint` clean
+- **Chrome extension port (v1.3.7 parity):** `apps/chrome-extension/` forked from Firefox — MV3 `service_worker`, `side_panel` + `sidePanel`, `chrome.*`, async `onMessage` via `return true`+`sendResponse`, popup opens side panel under user gesture; preserved deep-dive race/`force` extract/noise strip; `MISTAKES.md` + pack `dist/meanbox-1.3.7.zip`; 77 unit tests green
+- **FigCraft mobile UI:** installed `figcraft-cli` 0.5.1 (`~/bin`); imported `meanbox.figcraft` → `design-system/mobile/figcraft/`; exported @2x PNGs `MB_Ask` / `MB_News` / `MB_Study` / `MB_Tools`; README + MASTER link. No `MB_More` frame yet.
+- **Expo mobile scaffold (SDK 54):** `apps/mobile` expo-router tabs Ask/News/Study/Tools/More using `MeanboxThemeProvider` + FigCraft mock data; iOS `expo export` green; keep package without `"type":"module"` (Metro/Babel); RN overrides in root `package.json`.
+
 ## Next
 
-1. Smoke Gadgets Saved search + Load more (6+ cards → first 5 + Load more; query filters list)
-2. Smoke RTCFC/BCMT Structure on gadgets page (paste freeform → Structure → fields fill); needs `PERPLEXITY_API_KEY` (or mock)
-3. Deploy web BFF with IC env so `/api/news/clip` works in production
-4. Reload temp add-on (v1.3.1); smoke Quick Gadgets (RTCFC chip + structure) + tip/timer + Deep dive
-5. Commit/push when authorized
+1. Smoke Expo mobile against production BFF (News list needs IC env; Study pack generate needs transcript)
+2. Optional: add `MB_More` frame in FigCraft and align More tab UI
+3. Smoke Firefox sidebar BrandSurface (light scrim + main.jpg) after reload temporary add-on
+4. Smoke Chrome load-unpacked — confirm sidebar BrandSurface matches Firefox
+5. Upload AMO: `meanbox-1.3.8.zip` + `meanbox-1.3.8-source.zip`
+6. Deploy web BFF with IC env so `/api/news/clip` works in production
+7. Commit/push when authorized
 
 ## Decisions
 
+- Mobile DS extends existing Meanbox stone+teal tokens (reject ui-ux-pro-max clay/indigo); light-only v1; Expo/RN target; tokens: CSS → `tokens.json` → `theme/tokens.ts`
 - RTCFC/BCMT Structure: explicit button only (not while typing); Perplexity `tools: []` (not Jev — no free-text extraction); apply via `compose*` into shell
 - Reuse existing `/api/youtube/search` and `/api/github/search` (no new bridge APIs)
 - News deep dive: sidebar `POST /api/news/clip` then `POST /api/news/deep-dive` with feed `id` (IC server env); Open in Meanbox → `/news?story=`
 - Quick Gadgets (tip/split/convert/timer/rtcfc) resolve in-extension sidebar; other gadget phrases and empty Gadgets still deep-link to `/gadgets?q=`; Places still deep-link to web
 - Extension RTCFC freeform uses BFF `/api/rtcfc/structure`; on failure rolls a local sample
-- Article detection: any granted host + heuristics (`og:type`, JSON-LD, `<article>`, learning path); user taps Deep dive (auto-run for menu/popup/omnibox/empty-state launches)
+- Article detection: tab sync still uses heuristics; **Deep dive always force-extracts** active-tab main body (any granted https page) then clip + deep-dive
+- Article excerpt: strip in-article related/promo widgets before `innerText` (related boxes often live inside `<article>`, not `<aside>`)
 - Gadgets free-text seed uses `/gadgets?q=` (Shapeshift `useSearchFlags`); `?g=` still seeds gadget examples
 - Bare money amount in Quick Gadgets assumes 15% tip
 - Convert Quick Gadget is local unit conversion (km/mi, kg/lb, °C/°F) — not FX rates
 - Deep links use locale-aware `Link` from `@/i18n/navigation`
+- Sidebar-owned `pageContext` writes use `setPageContextLocal` (suppress reload) so Deep dive / gadget updates do not race `loadId`
 - Related lists capped at 5 items
 - Browser playback via same-origin `/api/github/video/file` (not raw MinIO URLs)
 - Deployed via `vercel deploy --prod` from repo root (git push to protected main blocked by policy)
@@ -90,6 +115,8 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 | RTCFC / BCMT Structure BFF | `apps/web/src/lib/rtcfc/`, `apps/web/src/lib/bcmt/`, `apps/web/src/app/api/rtcfc/structure/`, `apps/web/src/app/api/bcmt/structure/` |
 | Structure fetchers + cards | `packages/react/src/hooks/useStructurePrompt.ts`, `RtcfcCard.tsx`, `BcmtCard.tsx` |
 | Firefox extension | `apps/firefox-extension/` |
+| Chrome extension | `apps/chrome-extension/` |
+| Chrome mistakes checklist | `apps/chrome-extension/MISTAKES.md` |
 | Article / deep-dive helpers | `apps/firefox-extension/lib/article.js` |
 | Quick Gadgets (tip/split/convert/timer/rtcfc) | `apps/firefox-extension/lib/gadgets.js` |
 | Extension deep-link paths | `apps/firefox-extension/lib/paths.js` |

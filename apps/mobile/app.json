@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Meanbox",
+    "slug": "meanbox",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "meanbox",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fafaf9"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.meanbox.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#fafaf9"
+      },
+      "package": "app.meanbox.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-system-ui",
+      "expo-font"
+    ],
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { syntheticArticleContext } from "./lib/article.js";
+import { mergeArticleWithQuery } from "./lib/article.js";
 import { meanboxHref } from "./lib/config.js";
 import { resolveQuickGadget } from "./lib/gadgets.js";
 import { gadgetsPath, placesPath } from "./lib/paths.js";
@@ -51,9 +51,17 @@ form?.addEventListener("submit", async (e) => {
     return;
   }
   if (searchTarget === "news") {
-    const ctx = syntheticArticleContext({ title: q, excerpt: q });
+    const extracted = await browser.runtime.sendMessage({
+      type: "extract-active-article",
+      force: true,
+    });
+    const ctx = mergeArticleWithQuery(extracted?.context, q);
     if (!ctx) {
-      setStatus(statusEl, "Enter a topic for deep dive", "error");
+      setStatus(
+        statusEl,
+        "Enter a topic or open a page (grant host access in Options).",
+        "error",
+      );
       return;
     }
     await browser.runtime.sendMessage({

@@ -12,6 +12,7 @@ import {
 } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { collectNewsHighlightTerms, extractNewsHighlightSnippets, highlightNewsText } from "../lib/highlightNewsText";
+import { splitProseParagraphs } from "../lib/splitProseParagraphs";
 import type { NewsFeedItem } from "./NewsFeedItemCard";
 
 function relativeWhen(iso: string): string | null {
@@ -92,6 +93,7 @@ export function NewsDetailCard({
   const source = item.sourceDisplayName?.trim() || null;
   const href = item.canonicalUrl?.trim() || null;
   const excerpt = item.excerpt.trim();
+  const summaryParagraphs = splitProseParagraphs(excerpt);
   const terms = collectNewsHighlightTerms(highlightQuery);
   const snippets = extractNewsHighlightSnippets(excerpt, terms);
   const canPin = typeof onTogglePin === "function";
@@ -137,10 +139,21 @@ export function NewsDetailCard({
             <h3 className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
               Summary
             </h3>
-            {excerpt ? (
-              <p className="text-[15px] leading-[22px] text-pretty text-ink-2">{excerpt}</p>
+            {summaryParagraphs.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                {summaryParagraphs.map((para, i) => (
+                  <p
+                    key={`summary-${i}`}
+                    className="text-[15px] leading-relaxed text-pretty text-foreground"
+                  >
+                    {para}
+                  </p>
+                ))}
+              </div>
             ) : (
-              <p className="text-[15px] leading-[22px] text-muted-foreground">No summary available.</p>
+              <p className="text-[15px] leading-relaxed text-muted-foreground">
+                No summary available.
+              </p>
             )}
           </section>
 

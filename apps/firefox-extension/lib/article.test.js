@@ -3,7 +3,11 @@ import {
   TITLE_MAX,
   EXCERPT_MAX,
   analyzePageFields,
+  buildForcedArticleContext,
+  extractCleanTextFromHtml,
   isExcludedArticleUrl,
+  looksLikeArticleNoise,
+  mergeArticleWithQuery,
   syntheticArticleContext,
   buildArticlePageContext,
 } from "./article.js";
@@ -127,6 +131,26 @@ describe("analyzePageFields", () => {
     expect(result.excerpt).toBe("Selected paragraph about policy changes.");
   });
 
+  test("prefers mainText over og description when no selection", () => {
+    const result = analyzePageFields({
+      pageUrl: "https://docs.example.com/guide",
+      title: "Getting started with Meanbox",
+      ogTitle: "Getting started with Meanbox",
+      ogType: "article",
+      ogDescription: "Short meta blurb only.",
+      metaDescription: "",
+      h1: "Getting started",
+      canonical: "https://docs.example.com/guide",
+      jsonLdTypes: [],
+      hasArticleEl: false,
+      selection: "",
+      articleText: "",
+      mainText:
+        "Install the extension, grant host access, then open any page and tap Deep dive.",
+    });
+    expect(result.excerpt).toContain("Install the extension");
+  });
+
   test("truncates title and excerpt", () => {
     const result = analyzePageFields({
       pageUrl: "https://news.example.com/a",
@@ -144,6 +168,85 @@ describe("analyzePageFields", () => {
     });
     expect(result.title.length).toBe(TITLE_MAX);
     expect(result.excerpt.length).toBe(EXCERPT_MAX);
+  });
+});
+
+describe("buildForcedArticleContext", () => {
+  test("builds context from title + mainText without heuristics", () => {
+    const ctx = buildForcedArticleContext({
+      pageUrl: "https://docs.example.com/api",
+      title: "API docs",
+      mainText: "Authentication uses bearer tokens for all protected routes.",
+      canonical: "https://docs.example.com/api",
+    });
+    expect(ctx).not.toBeNull();
+    expect(ctx.kind).toBe("article");
+    expect(ctx.confidence).toBe("synthetic");
+    expect(ctx.title).toBe("API docs");
+    expect(ctx.excerpt).toContain("bearer tokens");
+    expect(ctx.canonicalUrl).toBe("https://docs.example.com/api");
+  });
+
+  test("returns null when no title or body", () => {
+    expect(
+      buildForcedArticleContext({
+        pageUrl: "https://example.com/",
+        title: "",
+        mainText: "",
+      }),
+    ).toBeNull();
+  });
+
+  test("prefers selection over mainText", () => {
+    const ctx = buildForcedArticleContext({
+      pageUrl: "https://example.com/p",
+      title: "Page",
+      selection: "User highlighted this sentence.",
+      mainText: "Full page body that should be ignored.",
+    });
+    expect(ctx.excerpt).toBe("User highlighted this sentence.");
+  });
+});
+
+describe("mergeArticleWithQuery", () => {
+  test("returns synthetic when no context and query present", () => {
+    const ctx = mergeArticleWithQuery(null, "climate policy");
+    expect(ctx.title).toBe("climate policy");
+    expect(ctx.excerpt).toBe("climate policy");
+    expect(ctx.confidence).toBe("synthetic");
+  });
+
+  test("returns null when no context and empty query", () => {
+    expect(mergeArticleWithQuery(null, "")).toBeNull();
+  });
+
+  test("keeps page excerpt when longer than query", () => {
+    const page = {
+      kind: "article",
+      title: "Page title",
+      excerpt: "A long body excerpt from the open web page content here.",
+      canonicalUrl: "https://ex.com/a",
+      pageUrl: "https://ex.com/a",
+      confidence: "high",
+      variant: "article",
+    };
+    const merged = mergeArticleWithQuery(page, "topic");
+    expect(merged.excerpt).toBe(page.excerpt);
+    expect(merged.title).toBe("Page title");
+  });
+
+  test("uses query as excerpt when page excerpt is thin", () => {
+    const page = {
+      kind: "article",
+      title: "Thin",
+      excerpt: "Thin",
+      canonicalUrl: "https://ex.com/a",
+      pageUrl: "https://ex.com/a",
+      confidence: "synthetic",
+      variant: "article",
+    };
+    const merged = mergeArticleWithQuery(page, "a longer topic phrase for dive");
+    expect(merged.excerpt).toBe("a longer topic phrase for dive");
   });
 });
 
@@ -180,5 +283,50 @@ describe("buildArticlePageContext", () => {
       confidence: "high",
       variant: "article",
     });
+  });
+});
+
+describe("looksLikeArticleNoise", () => {
+  test("flags chrome tags and related class tokens", () => {
+    expect(looksLikeArticleNoise({ tagName: "aside" })).toBe(true);
+    expect(looksLikeArticleNoise({ tagName: "nav" })).toBe(true);
+    expect(
+      looksLikeArticleNoise({
+        tagName: "div",
+        className: "box-category related-news",
+      }),
+    ).toBe(true);
+    expect(
+      looksLikeArticleNoise({
+        tagName: "div",
+        className: "tin-lien-quan",
+      }),
+    ).toBe(true);
+    expect(
+      looksLikeArticleNoise({ tagName: "p", className: "Normal" }),
+    ).toBe(false);
+  });
+});
+
+describe("extractCleanTextFromHtml", () => {
+  test("keeps article body and drops related news card", () => {
+    const html = `
+      <article>
+        <p>Bill Gates đồng sáng lập Contrails.org để giúp hãng bay tránh vùng hình thành vệt ngưng tụ.</p>
+        <p>Bảo Bảo (theo Thời báo Ấn Độ, Gates Notes)</p>
+        <div class="box-category related-news">
+          <a href="/bezos">
+            Cam kết rót 10 tỷ USD cho khí hậu, tỷ phú Jeff Bezos thực tế đã chi bao nhiêu?
+          </a>
+          <p>Gần 7 năm trước, ông chủ Amazon cam kết chi 10 tỷ USD.</p>
+          <span class="comment-count">16</span>
+        </div>
+      </article>
+    `;
+    const text = extractCleanTextFromHtml(html);
+    expect(text).toContain("Contrails.org");
+    expect(text).toContain("Bảo Bảo");
+    expect(text).not.toContain("Jeff Bezos");
+    expect(text).not.toContain("10 tỷ USD");
   });
 });
