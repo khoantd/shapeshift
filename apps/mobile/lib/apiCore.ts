@@ -62,8 +62,16 @@ export function intentTopKey(result: IntentResult | null | undefined): string {
   return top.trim().toLowerCase() || "none";
 }
 
-export function oauthStartUrl(apiBase: string): string {
-  return `${apiBase.replace(/\/+$/, "")}/api/youtube/oauth/start`;
+export function oauthStartUrl(
+  apiBase: string,
+  opts?: { returnTo?: string },
+): string {
+  const base = `${apiBase.replace(/\/+$/, "")}/api/youtube/oauth/start`;
+  const returnTo = opts?.returnTo?.trim();
+  if (!returnTo) return base;
+  const u = new URL(base);
+  u.searchParams.set("returnTo", returnTo);
+  return u.toString();
 }
 
 export function languageFromLocale(locale: MeanboxLocale): "en" | "vi" {

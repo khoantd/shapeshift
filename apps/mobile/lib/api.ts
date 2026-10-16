@@ -2,6 +2,10 @@
 
 import { loadSettings } from "./settings";
 import { type IntentResult, type NewsFeedItem } from "./apiCore";
+import {
+  MEANBOX_SESSION_COOKIE_HEADER,
+  loadSession,
+} from "./session";
 
 export type { IntentResult, NewsFeedItem } from "./apiCore";
 
@@ -72,11 +76,15 @@ export async function meanboxFetch<T = unknown>(
     }
   }
   const { query: _q, apiBase: _b, ...rest } = init;
+  const session = await loadSession();
   const res = await fetch(url.toString(), {
     ...rest,
     headers: {
       Accept: "application/json",
       ...(rest.body ? { "Content-Type": "application/json" } : {}),
+      ...(session?.bridge
+        ? { [MEANBOX_SESSION_COOKIE_HEADER]: session.bridge }
+        : {}),
       ...(rest.headers || {}),
     },
   });
@@ -228,6 +236,16 @@ export async function fetchSavedLearningPack(
     }
     throw err;
   }
+}
+
+export function fetchOAuthSession(apiBase?: string) {
+  return meanboxFetch<{
+    success: boolean;
+    connected: boolean;
+    email: string | null;
+    hasSub?: boolean;
+    clientConfigured?: boolean;
+  }>("/api/youtube/oauth/session", { apiBase });
 }
 
 export function classifyIntent(text: string, apiBase?: string) {

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -13,6 +14,7 @@ import {
   Globe,
   Info,
   LogIn,
+  LogOut,
   Server,
 } from "lucide-react-native";
 import { IconTile } from "../../components/IconTile";
@@ -20,16 +22,54 @@ import { ListRow } from "../../components/ListRow";
 import { MeanboxLogo } from "../../components/MeanboxLogo";
 import { Screen } from "../../components/Screen";
 import { ScreenHeader } from "../../components/ScreenHeader";
+import { fetchOAuthSession } from "../../lib/api";
 import { oauthStartUrl } from "../../lib/apiCore";
 import { useSettings } from "../../lib/SettingsProvider";
+import {
+  MOBILE_OAUTH_REDIRECT,
+  MOBILE_OAUTH_RETURN_TO,
+  clearSession,
+  loadSession,
+  parseMobileOAuthRedirect,
+  saveSession,
+  type MeanboxSession,
+} from "../../lib/session";
 import { type MeanboxLocale } from "../../lib/settingsCore";
 import { useMeanboxTheme } from "../../theme";
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function MoreScreen() {
   const { color, typography, spacing, icon, radius } = useMeanboxTheme();
   const { settings, setApiBase, setLocale } = useSettings();
   const [editingBase, setEditingBase] = useState(false);
   const [baseDraft, setBaseDraft] = useState(settings.apiBase);
+  const [session, setSession] = useState<MeanboxSession | null>(null);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+
+  const refreshAccount = useCallback(async () => {
+    const local = await loadSession();
+    setSession(local);
+    if (!local?.bridge) {
+      setAccountEmail(null);
+      return;
+    }
+    try {
+      const status = await fetchOAuthSession(settings.apiBase);
+      if (status.connected) {
+        setAccountEmail(status.email || local.email);
+      } else {
+        setAccountEmail(local.email);
+      }
+    } catch {
+      setAccountEmail(local.email);
+    }
+  }, [settings.apiBase]);
+
+  useEffect(() => {
+    void refreshAccount();
+  }, [refreshAccount]);
 
   const saveBase = async () => {
     try {
@@ -49,8 +89,57 @@ export default function MoreScreen() {
   };
 
   const signIn = async () => {
-    await WebBrowser.openBrowserAsync(oauthStartUrl(settings.apiBase));
+    setAuthBusy(true);
+    try {
+      const startUrl = oauthStartUrl(settings.apiBase, {
+        returnTo: MOBILE_OAUTH_RETURN_TO,
+      });
+      const result = await WebBrowser.openAuthSessionAsync(
+        startUrl,
+        MOBILE_OAUTH_REDIRECT,
+      );
+      if (result.type !== "success" || !("url" in result) || !result.url) {
+        if (result.type === "cancel" || result.type === "dismiss") return;
+        Alert.alert("Sign-in", "Could not complete Google sign-in.");
+        return;
+      }
+      const parsed = parseMobileOAuthRedirect(result.url);
+      if (!parsed.ok) {
+        Alert.alert(
+          "Sign-in failed",
+          parsed.error === "not_connected"
+            ? "Google did not return a Meanbox session. Try again."
+            : `OAuth error: ${parsed.error}`,
+        );
+        return;
+      }
+      await saveSession(parsed.session);
+      setSession(parsed.session);
+      setAccountEmail(parsed.session.email);
+      await refreshAccount();
+      Alert.alert(
+        "Signed in",
+        parsed.session.email
+          ? `Connected as ${parsed.session.email}`
+          : "Google account connected.",
+      );
+    } catch (e) {
+      Alert.alert(
+        "Sign-in failed",
+        e instanceof Error ? e.message : "Unexpected error",
+      );
+    } finally {
+      setAuthBusy(false);
+    }
   };
+
+  const signOut = async () => {
+    await clearSession();
+    setSession(null);
+    setAccountEmail(null);
+  };
+
+  const signedIn = Boolean(session?.bridge);
 
   return (
     <Screen>
@@ -68,16 +157,59 @@ export default function MoreScreen() {
         </Text>
       </View>
 
-      <ListRow
-        title="Sign in"
-        meta="Open Meanbox Google sign-in in the browser"
-        onPress={() => void signIn()}
-        leading={
-          <IconTile tone="brand">
-            <LogIn size={18} color={color.brand} strokeWidth={icon.strokeWidth} />
-          </IconTile>
-        }
-      />
+      {signedIn ? (
+        <>
+          <ListRow
+            title="Account"
+            meta={accountEmail || "Google connected"}
+            leading={
+              <IconTile tone="brand">
+                <LogIn
+                  size={18}
+                  color={color.brand}
+                  strokeWidth={icon.strokeWidth}
+                />
+              </IconTile>
+            }
+          />
+          <ListRow
+            title="Sign out"
+            meta="Clear Meanbox session on this device"
+            onPress={() => void signOut()}
+            leading={
+              <IconTile>
+                <LogOut
+                  size={18}
+                  color={color.ink2}
+                  strokeWidth={icon.strokeWidth}
+                />
+              </IconTile>
+            }
+          />
+        </>
+      ) : (
+        <ListRow
+          title={authBusy ? "Signing in…" : "Sign in"}
+          meta="Google via Meanbox (session stays in the app)"
+          onPress={() => {
+            if (!authBusy) void signIn();
+          }}
+          leading={
+            <IconTile tone="brand">
+              {authBusy ? (
+                <ActivityIndicator color={color.brand} />
+              ) : (
+                <LogIn
+                  size={18}
+                  color={color.brand}
+                  strokeWidth={icon.strokeWidth}
+                />
+              )}
+            </IconTile>
+          }
+        />
+      )}
+
       <ListRow
         title="Language"
         meta={settings.locale === "vi" ? "Tiếng Việt" : "English"}
@@ -149,9 +281,7 @@ export default function MoreScreen() {
         title="About"
         meta="v0.1.0 · Meanbox mobile"
         bordered={false}
-        onPress={() =>
-          void Linking.openURL(settings.apiBase)
-        }
+        onPress={() => void Linking.openURL(settings.apiBase)}
         leading={
           <IconTile>
             <Info size={18} color={color.ink2} strokeWidth={icon.strokeWidth} />

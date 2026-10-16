@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   MEANBOX_SESSION_COOKIE_HEADER,
+  MOBILE_OAUTH_REDIRECT,
+  buildSessionCookieHeaderFromSession,
   mergeSessionFromCookiesAndBridge,
   parseSessionCookieHeader,
   sessionHasOAuthTokens,
@@ -64,5 +66,22 @@ describe("sessionHasOAuthTokens", () => {
     expect(sessionHasOAuthTokens(mergeSessionFromCookiesAndBridge(jar({}), ""))).toBe(
       false,
     );
+  });
+});
+
+describe("buildSessionCookieHeaderFromSession", () => {
+  it("round-trips through parseSessionCookieHeader", () => {
+    const header = buildSessionCookieHeaderFromSession({
+      accessToken: "at",
+      refreshToken: "rt",
+      expiresAtMs: 123,
+      email: "a@b.c",
+      sub: "sub1",
+    });
+    expect(header).toContain("yt_oauth_at=at");
+    expect(header).toContain("yt_oauth_rt=rt");
+    const map = parseSessionCookieHeader(header);
+    expect(map.get("yt_oauth_sub")).toBe("sub1");
+    expect(MOBILE_OAUTH_REDIRECT).toBe("meanbox://oauth");
   });
 });

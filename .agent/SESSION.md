@@ -40,6 +40,12 @@ Ship Meanbox Firefox extension MVP (repo lens + YouTube study companion) on top 
 
 - None
 
+## Done (this session — iOS build)
+
+- Fixed Meanbox iOS: `CODE_SIGN_STYLE=Automatic` + Podfile quote fix for path-with-spaces (`EXConstants` app.config script); cleared DerivedData + `pod install`; **simulator build succeeded**. Physical device still needs Developer Mode enabled on KhoaDue’s iPhone.
+- Mobile default install → **Release** (`ios` script); prod API `https://meanbox.vercel.app`
+- **Mobile sign-in fix:** BFF `GET /api/youtube/oauth/mobile-bridge` → `meanbox://oauth?bridge=…`; app stores bridge + sends `X-Meanbox-Cookie` (Firefox parity). **Deploy web** before prod sign-in works.
+
 ## Done (this session — mobile BFF)
 
 - **Mobile BFF wiring:** `lib/api` + settings (AsyncStorage) + SettingsProvider; News feed/`deep-dive` stack; Study search → pack generate; Ask `/api/intent` routing + local recent; Tools gadgets via core parsers + RTCFC structure; More API base/locale + OAuth browser; 24 unit tests + typecheck green

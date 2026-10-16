@@ -3,6 +3,7 @@ import {
   formatRelativeTime,
   intentTopKey,
   newsCategoryMatch,
+  oauthStartUrl,
   type NewsFeedItem,
 } from "./apiCore";
 
@@ -55,5 +56,17 @@ describe("intentTopKey", () => {
     expect(intentTopKey({ topIntent: "Tip" })).toBe("tip");
     expect(intentTopKey({ intent: "news" })).toBe("news");
     expect(intentTopKey(null)).toBe("none");
+  });
+});
+
+describe("oauthStartUrl", () => {
+  test("adds mobile returnTo", () => {
+    const url = oauthStartUrl("https://meanbox.vercel.app", {
+      returnTo: "/api/youtube/oauth/mobile-bridge",
+    });
+    expect(url).toContain("/api/youtube/oauth/start");
+    expect(url).toContain(
+      "returnTo=%2Fapi%2Fyoutube%2Foauth%2Fmobile-bridge",
+    );
   });
 });

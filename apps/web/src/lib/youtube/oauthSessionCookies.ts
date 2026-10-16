@@ -98,3 +98,31 @@ export function mergeSessionFromCookiesAndBridge(
 export function sessionHasOAuthTokens(session: YouTubeOAuthCookieSession): boolean {
   return Boolean(session.accessToken || session.refreshToken);
 }
+
+/**
+ * Serialize a session into Cookie-style form for `X-Meanbox-Cookie` / mobile deep link.
+ */
+export function buildSessionCookieHeaderFromSession(
+  session: YouTubeOAuthCookieSession,
+): string {
+  const parts: string[] = [];
+  if (session.accessToken) {
+    parts.push(`${YT_COOKIE_ACCESS}=${session.accessToken}`);
+  }
+  if (session.refreshToken) {
+    parts.push(`${YT_COOKIE_REFRESH}=${session.refreshToken}`);
+  }
+  if (session.expiresAtMs > 0) {
+    parts.push(`${YT_COOKIE_EXPIRES}=${session.expiresAtMs}`);
+  }
+  if (session.email) {
+    parts.push(`${YT_COOKIE_EMAIL}=${session.email}`);
+  }
+  if (session.sub) {
+    parts.push(`${YT_COOKIE_SUB}=${session.sub}`);
+  }
+  return parts.join("; ");
+}
+
+/** Deep link scheme target used by the Meanbox mobile auth session. */
+export const MOBILE_OAUTH_REDIRECT = "meanbox://oauth";

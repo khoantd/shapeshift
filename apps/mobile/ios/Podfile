@@ -65,5 +65,15 @@ target 'Meanbox' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # expo-constants ships an unquoted `bash -l -c "$PODS_TARGET_SRCROOT/..."` phase.
+    # Paths with spaces (e.g. "Software Development") break as: No such file: /Volumes/Data/Software
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'EXConstants'
+      target.shell_script_build_phases.each do |phase|
+        next unless phase.name&.include?('Generate app.config')
+        phase.shell_script = 'bash -l -c "\"$PODS_TARGET_SRCROOT/../scripts/get-app-config-ios.sh\""'
+      end
+    end
   end
 end
